@@ -1,12 +1,15 @@
 var output = [];
 
 // timing stuff
+var b_budget = 100;
 var b_t0 = 0;
 var b_t1 = 0;
+var b_n = 0;
 var b_ms = 0;
 var b_round = 0;
 var b_total = 0;
-var b_best = 0;
+var b_chunks = 0;
+var b_bestrate = 0;
 var b_chk = 0;
 
 // stuff (very descriptive ik)
@@ -44,11 +47,14 @@ var sc_ready = 0;
 var sc_gate = 0;
 var sc_tick = 0;
 var sc_x = 0;
+var sc_stop = 0;
+var sc_done = 0;
 
 def @bench_begin() {
   b_round = 0;
   b_total = 0;
-  b_best = 1000000000;
+  b_chunks = 0;
+  b_bestrate = 0;
   b_chk = 0;
 }
 
@@ -56,20 +62,21 @@ def @bench_round() {
   b_ms = (b_t1 - b_t0) * 86400000;
   if b_round > 0 {
     b_total += b_ms;
-    if b_ms < b_best {
-      b_best = b_ms;
+    b_chunks += b_n;
+    if b_n / b_ms > b_bestrate {
+      b_bestrate = b_n / b_ms;
     }
   }
   b_round += 1;
 }
 
-def @bench_end(id, ops) {
-  append(output, arg("id") ++ " | " ++ round(b_total * 1000) / 1000 ++ " | " ++ round(b_best * 1000) / 1000 ++ " | " ++ arg("ops") ++ " | " ++ b_chk);
+def @bench_end(id, opc) {
+  append(output, arg("id") ++ " | " ++ round(b_total * 1000) / 1000 ++ " | " ++ b_chunks * arg("opc") ++ " | " ++ round(b_chunks * arg("opc") / b_total * 1000) / 1000 ++ " | " ++ round(b_bestrate * arg("opc") * 1000) / 1000 ++ " | " ++ b_chk);
 }
 
 when flag {
   clear(output);
-  append(output, "id | total_ms | best_ms | ops | checksum");
+  append(output, "id | total_ms | ops | ops_per_ms | best_ops_per_ms | checksum");
 
   @suite_loops();
   @suite_vars();

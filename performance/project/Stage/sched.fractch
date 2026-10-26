@@ -3,14 +3,15 @@ def @sched_looptick() {
   repeat 5 {
     sc_n = 0;
     b_t0 = daysSince2000();
-    repeat 200000 {
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       sc_n += 1;
     }
     b_t1 = daysSince2000();
+    b_n = sc_n;
     @bench_round();
   }
-  b_chk = sc_n;
-  @bench_end("sched_looptick", 800000);
+  b_chk = b_n;
+  @bench_end("sched_looptick", 1);
 }
 
 def @sched_pingpong() {
@@ -18,39 +19,42 @@ def @sched_pingpong() {
   repeat 5 {
     sc_hits = 0;
     b_t0 = daysSince2000();
-    repeat 50000 {
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       broadcast_wait sc_ping;
     }
     b_t1 = daysSince2000();
+    b_n = sc_hits;
     @bench_round();
   }
-  b_chk = sc_hits;
-  @bench_end("sched_pingpong", 200000);
+  b_chk = b_n;
+  @bench_end("sched_pingpong", 1);
 }
 
 def @sched_restart() {
   @bench_begin();
   repeat 5 {
-    sc_x = 0;
+    sc_n = 0;
     b_t0 = daysSince2000();
-    repeat 30000 {
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       broadcast sc_long;
+      sc_n += 1;
     }
-    broadcast_wait sc_long;
     b_t1 = daysSince2000();
+    b_n = sc_n;
+    broadcast_wait sc_long;
     @bench_round();
   }
-  b_chk = sc_x;
-  @bench_end("sched_restart", 120000);
+  b_chk = b_n;
+  @bench_end("sched_restart", 1);
 }
 
 def @sched_clonechurn() {
   @bench_begin();
   repeat 5 {
     sc_hits = 0;
-    b_t0 = daysSince2000();
     k_n = 0;
-    repeat 50 {
+    b_t0 = daysSince2000();
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       k_n += 100;
       repeat 100 {
         clone "Churn";
@@ -58,10 +62,11 @@ def @sched_clonechurn() {
       wait_until sc_hits == k_n;
     }
     b_t1 = daysSince2000();
+    b_n = sc_hits;
     @bench_round();
   }
-  b_chk = sc_hits;
-  @bench_end("sched_clonechurn", 20000);
+  b_chk = b_n;
+  @bench_end("sched_clonechurn", 1);
 }
 
 def @sched_spawn() {
@@ -76,30 +81,38 @@ def @sched_threads() {
   @bench_begin();
   repeat 5 {
     sc_n = 0;
+    sc_stop = 0;
+    sc_done = 0;
     b_t0 = daysSince2000();
     broadcast sc_run;
-    wait_until sc_n == 101 * 1000;
+    wait_until (daysSince2000() - b_t0) * 86400000 >= b_budget;
     b_t1 = daysSince2000();
+    b_n = sc_n;
+    sc_stop = 1;
+    wait_until sc_done == 101;
     @bench_round();
   }
-  b_chk = sc_n;
-  @bench_end("sched_threads", 404000);
+  b_chk = b_n;
+  @bench_end("sched_threads", 1);
 }
 
 def @sched_fanout() {
   @bench_begin();
   repeat 5 {
     sc_hits = 0;
+    k_n = 0;
     b_t0 = daysSince2000();
-    repeat 1000 {
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       broadcast sc_fan;
+      k_n += 101;
     }
-    wait_until sc_hits == 101 * 1000;
+    wait_until sc_hits == k_n;
     b_t1 = daysSince2000();
+    b_n = sc_hits;
     @bench_round();
   }
-  b_chk = sc_hits;
-  @bench_end("sched_fanout", 404000);
+  b_chk = b_n;
+  @bench_end("sched_fanout", 1);
 }
 
 def @sched_fanwait() {
@@ -107,14 +120,15 @@ def @sched_fanwait() {
   repeat 5 {
     sc_hits = 0;
     b_t0 = daysSince2000();
-    repeat 500 {
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
       broadcast_wait sc_fan;
     }
     b_t1 = daysSince2000();
+    b_n = sc_hits;
     @bench_round();
   }
-  b_chk = sc_hits;
-  @bench_end("sched_fanwait", 202000);
+  b_chk = b_n;
+  @bench_end("sched_fanwait", 1);
 }
 
 def @sched_waituntil() {
@@ -122,21 +136,23 @@ def @sched_waituntil() {
   repeat 5 {
     sc_gate = 0;
     sc_n = 0;
+    k_n = 0;
     broadcast sc_poll;
     repeat 3 {
       sc_tick += 1;
     }
     b_t0 = daysSince2000();
-    repeat 10000 {
-      sc_tick += 1;
+    until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+      k_n += 1;
     }
     b_t1 = daysSince2000();
+    b_n = k_n;
     sc_gate = 1;
     wait_until sc_n == 101;
     @bench_round();
   }
-  b_chk = sc_n;
-  @bench_end("sched_waituntil", 40000);
+  b_chk = b_n;
+  @bench_end("sched_waituntil", 1);
 }
 
 def @sched_cleanup() {

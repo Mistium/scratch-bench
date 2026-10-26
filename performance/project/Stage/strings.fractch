@@ -1,8 +1,12 @@
 def @k_str_join() warp {
-  k_s = "";
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 80000 {
-    k_s = k_s ++ "ab";
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_s = "";
+    repeat 20000 {
+      k_s = k_s ++ "ab";
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_s.length;
@@ -13,14 +17,18 @@ def @k_str_letter() warp {
   repeat 100 {
     k_s = k_s ++ "abcdefghij";
   }
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 300000 {
-    k_i += 1;
-    if k_s.letter(k_i % 1000 + 1) == "a" {
-      k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 10000 {
+      k_i += 1;
+      if k_s.letter(k_i % 1000 + 1) == "a" {
+        k_acc += 1;
+      }
     }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
@@ -31,29 +39,37 @@ def @k_str_contains() warp {
   repeat 100 {
     k_s = k_s ++ "abcdefghij";
   }
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 60000 {
-    if contains(k_s, "j9") {
-      k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    repeat 2000 {
+      if contains(k_s, "j9") {
+        k_acc += 1;
+      }
+      if contains(k_s, "hij") {
+        k_acc += 2;
+      }
+      k_acc += k_s.length;
     }
-    if contains(k_s, "hij") {
-      k_acc += 2;
-    }
-    k_acc += k_s.length;
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_str_cast() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 150000 {
-    k_i += 1;
-    k_t = k_i / 4 ++ "";
-    k_acc += k_t + 0;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 5000 {
+      k_i += 1;
+      k_t = k_i / 4 ++ "";
+      k_acc += k_t + 0;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = round(k_acc);
@@ -61,30 +77,30 @@ def @k_str_cast() warp {
 
 def @suite_strings() {
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_str_join();
     @bench_round();
   }
-  @bench_end("str_join", 640000);
+  @bench_end("str_join", 20000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_str_letter();
     @bench_round();
   }
-  @bench_end("str_letter", 2400000);
+  @bench_end("str_letter", 10000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_str_contains();
     @bench_round();
   }
-  @bench_end("str_contains", 480000);
+  @bench_end("str_contains", 2000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_str_cast();
     @bench_round();
   }
-  @bench_end("str_cast", 1200000);
+  @bench_end("str_cast", 5000);
 }

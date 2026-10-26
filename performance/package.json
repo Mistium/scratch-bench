@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@scratch/scratch-vm": "^15.1.1"
+    "@scratch/scratch-vm": "^15.1.1",
+    "turbowarp-vm": "github:TurboWarp/scratch-vm#f26ff67e951258a84d25cad3acaf8804eb202318"
   }
 }

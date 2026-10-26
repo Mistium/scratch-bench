@@ -5,9 +5,10 @@ when clone {
 }
 
 when broadcast sc_run {
-  repeat 1000 {
+  until sc_stop == 1 {
     sc_n += 1;
   }
+  sc_done += 1;
 }
 
 when broadcast sc_fan {

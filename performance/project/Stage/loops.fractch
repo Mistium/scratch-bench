@@ -1,78 +1,106 @@
 def @k_loops_empty() warp {
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 1000000 {
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    repeat 40000 {
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
-  b_chk = 1000000;
+  b_chk = 40000;
 }
 
 def @k_loops_repeat() warp {
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 500000 {
-    k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    repeat 20000 {
+      k_acc += 1;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_loops_until() warp {
-  k_i = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  until k_i >= 500000 {
-    k_i += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    until k_i >= 20000 {
+      k_i += 1;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_i;
 }
 
 def @k_loops_while() warp {
-  k_i = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  while k_i < 500000 {
-    k_i += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    while k_i < 20000 {
+      k_i += 1;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_i;
 }
 
 def @k_loops_foreach() warp {
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  control.for_each(VALUE: 500000, VARIABLE: var("k_i")) {
-    k_acc += k_i;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    control.for_each(VALUE: 20000, VARIABLE: var("k_i")) {
+      k_acc += k_i;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_loops_nested() warp {
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 700 {
-    repeat 700 {
-      k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    repeat 140 {
+      repeat 140 {
+        k_acc += 1;
+      }
     }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_loops_ifelse() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 150000 {
-    k_i += 1;
-    if k_i % 3 == 0 {
-      k_acc += 1;
-    } else {
-      if k_i % 3 == 1 {
-        k_acc += 2;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 8000 {
+      k_i += 1;
+      if k_i % 3 == 0 {
+        k_acc += 1;
       } else {
-        k_acc += 3;
+        if k_i % 3 == 1 {
+          k_acc += 2;
+        } else {
+          k_acc += 3;
+        }
       }
     }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
@@ -80,51 +108,51 @@ def @k_loops_ifelse() warp {
 
 def @suite_loops() {
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_empty();
     @bench_round();
   }
-  @bench_end("loops_empty", 8000000);
+  @bench_end("loops_empty", 40000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_repeat();
     @bench_round();
   }
-  @bench_end("loops_repeat", 4000000);
+  @bench_end("loops_repeat", 20000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_until();
     @bench_round();
   }
-  @bench_end("loops_until", 4000000);
+  @bench_end("loops_until", 20000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_while();
     @bench_round();
   }
-  @bench_end("loops_while", 4000000);
+  @bench_end("loops_while", 20000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_foreach();
     @bench_round();
   }
-  @bench_end("loops_foreach", 4000000);
+  @bench_end("loops_foreach", 20000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_nested();
     @bench_round();
   }
-  @bench_end("loops_nested", 3920000);
+  @bench_end("loops_nested", 19600);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_loops_ifelse();
     @bench_round();
   }
-  @bench_end("loops_ifelse", 1200000);
+  @bench_end("loops_ifelse", 8000);
 }

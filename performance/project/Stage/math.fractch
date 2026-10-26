@@ -1,158 +1,194 @@
 def @k_math_arith() warp {
-  k_i = 0;
-  k_a = 1;
-  k_b = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 150000 {
-    k_i += 1;
-    k_a = (k_a * 31 + k_i) % 1000003;
-    k_b = k_b + k_a / 4 - k_i * 0.5;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_a = 1;
+    k_b = 0;
+    repeat 5000 {
+      k_i += 1;
+      k_a = (k_a * 31 + k_i) % 1000003;
+      k_b = k_b + k_a / 4 - k_i * 0.5;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = round(k_b);
 }
 
 def @k_math_round() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 250000 {
-    k_i += 1;
-    k_acc += floor(k_i / 3) + round(k_i / 7) + abs(0 - k_i);
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 8000 {
+      k_i += 1;
+      k_acc += floor(k_i / 3) + round(k_i / 7) + abs(0 - k_i);
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_math_trig() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 150000 {
-    k_i += 1;
-    k_acc += operator.mathop(NUM: k_i, field OPERATOR: "sin") + operator.mathop(NUM: k_i, field OPERATOR: "cos") + operator.mathop(NUM: k_i / 100, field OPERATOR: "atan");
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 5000 {
+      k_i += 1;
+      k_acc += operator.mathop(NUM: k_i, field OPERATOR: "sin") + operator.mathop(NUM: k_i, field OPERATOR: "cos") + operator.mathop(NUM: k_i / 100, field OPERATOR: "atan");
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = round(k_acc * 1000);
 }
 
 def @k_math_expsqrt() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 150000 {
-    k_i += 1;
-    k_x = k_i % 50 + 1;
-    k_acc += operator.mathop(NUM: k_i, field OPERATOR: "sqrt") + operator.mathop(NUM: k_i, field OPERATOR: "ln") + operator.mathop(NUM: k_x / 10, field OPERATOR: "e ^") + operator.mathop(NUM: k_x / 20, field OPERATOR: "10 ^");
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 5000 {
+      k_i += 1;
+      k_x = k_i % 50 + 1;
+      k_acc += operator.mathop(NUM: k_i, field OPERATOR: "sqrt") + operator.mathop(NUM: k_i, field OPERATOR: "ln") + operator.mathop(NUM: k_x / 10, field OPERATOR: "e ^") + operator.mathop(NUM: k_x / 20, field OPERATOR: "10 ^");
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = round(k_acc);
 }
 
 def @k_math_nbody() warp {
-  k_a = 100;
-  k_b = 0;
-  k_c = 0;
-  k_d = 1.2;
-  k_e = 0;
-  k_f = 0;
-  k_g = 0;
-  k_h = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 60000 {
-    k_x = 0 - k_a;
-    k_y = 0 - k_b;
-    k_z = operator.mathop(NUM: k_x * k_x + k_y * k_y, field OPERATOR: "sqrt");
-    k_acc = 5000 / (k_z * k_z * k_z);
-    k_c += k_x * k_acc * 0.01;
-    k_d += k_y * k_acc * 0.01;
-    k_a += k_c * 0.01;
-    k_b += k_d * 0.01;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_a = 100;
+    k_b = 0;
+    k_c = 0;
+    k_d = 1.2;
+    k_e = 0;
+    k_f = 0;
+    k_g = 0;
+    k_h = 0;
+    repeat 2000 {
+      k_x = 0 - k_a;
+      k_y = 0 - k_b;
+      k_z = operator.mathop(NUM: k_x * k_x + k_y * k_y, field OPERATOR: "sqrt");
+      k_acc = 5000 / (k_z * k_z * k_z);
+      k_c += k_x * k_acc * 0.01;
+      k_d += k_y * k_acc * 0.01;
+      k_a += k_c * 0.01;
+      k_b += k_d * 0.01;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = round((k_a + k_b + k_c + k_d) * 1000);
 }
 
 def @k_math_mandel() warp {
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  k_j = 0;
-  repeat 36 {
-    k_i = 0;
-    repeat 36 {
-      k_x = 0;
-      k_y = 0;
-      k_n = 0;
-      k_e = (k_i - 24) / 12;
-      k_f = (k_j - 18) / 12;
-      until k_n >= 50 || k_x * k_x + k_y * k_y > 4 {
-        k_z = k_x * k_x - k_y * k_y + k_e;
-        k_y = 2 * k_x * k_y + k_f;
-        k_x = k_z;
-        k_n += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    k_j = 0;
+    repeat 12 {
+      k_i = 0;
+      repeat 12 {
+        k_x = 0;
+        k_y = 0;
+        k_n = 0;
+        k_e = (k_i * 3 - 24) / 12;
+        k_f = (k_j * 3 - 18) / 12;
+        until k_n >= 50 || k_x * k_x + k_y * k_y > 4 {
+          k_z = k_x * k_x - k_y * k_y + k_e;
+          k_y = 2 * k_x * k_y + k_f;
+          k_x = k_z;
+          k_n += 1;
+        }
+        k_acc += k_n;
+        k_i += 1;
       }
-      k_acc += k_n;
-      k_i += 1;
+      k_j += 1;
     }
-    k_j += 1;
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_math_collatz() warp {
-  k_acc = 0;
-  k_i = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 2500 {
-    k_i += 1;
-    k_n = k_i;
-    until k_n == 1 {
-      if k_n % 2 == 0 {
-        k_n = k_n / 2;
-      } else {
-        k_n = k_n * 3 + 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_acc = 0;
+    k_i = 0;
+    repeat 100 {
+      k_i += 1;
+      k_n = k_i;
+      until k_n == 1 {
+        if k_n % 2 == 0 {
+          k_n = k_n / 2;
+        } else {
+          k_n = k_n * 3 + 1;
+        }
+        k_acc += 1;
       }
-      k_acc += 1;
     }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_math_compare() warp {
-  k_i = 0;
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 125000 {
-    k_i += 1;
-    if k_i < 62500 && !(k_i == 7) || k_i > 120000 {
-      k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_i = 0;
+    k_acc = 0;
+    repeat 5000 {
+      k_i += 1;
+      if k_i < 2500 && !(k_i == 7) || k_i > 4800 {
+        k_acc += 1;
+      }
+      if k_i % 5 == 0 || k_i % 7 == 0 && k_i % 11 != 0 {
+        k_acc += 2;
+      }
     }
-    if k_i % 5 == 0 || k_i % 7 == 0 && k_i % 11 != 0 {
-      k_acc += 2;
-    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
 }
 
 def @k_math_strcompare() warp {
-  k_s = "Hello World";
-  k_s2 = "hello world";
-  k_t = "abc";
-  k_acc = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 100000 {
-    if k_s == k_s2 {
-      k_acc += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_s = "Hello World";
+    k_s2 = "hello world";
+    k_t = "abc";
+    k_acc = 0;
+    repeat 4000 {
+      if k_s == k_s2 {
+        k_acc += 1;
+      }
+      if k_t < "abd" {
+        k_acc += 1;
+      }
+      if k_s != "Hello" {
+        k_acc += 1;
+      }
     }
-    if k_t < "abd" {
-      k_acc += 1;
-    }
-    if k_s != "Hello" {
-      k_acc += 1;
-    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_acc;
@@ -160,65 +196,65 @@ def @k_math_strcompare() warp {
 
 def @suite_math() {
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_arith();
     @bench_round();
   }
-  @bench_end("math_arith", 1200000);
+  @bench_end("math_arith", 5000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_round();
     @bench_round();
   }
-  @bench_end("math_round", 2000000);
+  @bench_end("math_round", 8000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_trig();
     @bench_round();
   }
-  @bench_end("math_trig", 1200000);
+  @bench_end("math_trig", 5000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_expsqrt();
     @bench_round();
   }
-  @bench_end("math_expsqrt", 1200000);
+  @bench_end("math_expsqrt", 5000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_nbody();
     @bench_round();
   }
-  @bench_end("math_nbody", 480000);
+  @bench_end("math_nbody", 2000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_mandel();
     @bench_round();
   }
-  @bench_end("math_mandel", 129904);
+  @bench_end("math_mandel", 1957);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_collatz();
     @bench_round();
   }
-  @bench_end("math_collatz", 1398112);
+  @bench_end("math_collatz", 3142);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_compare();
     @bench_round();
   }
-  @bench_end("math_compare", 1000000);
+  @bench_end("math_compare", 5000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_math_strcompare();
     @bench_round();
   }
-  @bench_end("math_strcompare", 800000);
+  @bench_end("math_strcompare", 4000);
 }

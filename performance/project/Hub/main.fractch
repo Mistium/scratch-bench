@@ -14,32 +14,36 @@ when broadcast hub_localvars {
 }
 
 def @hub_localvars_run() warp {
-  h_a = 1;
-  h_b = 2;
-  h_c = 3;
-  h_d = 4;
-  h_e = 5;
-  h_f = 6;
-  h_g = 7;
-  h_h = 8;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 50000 {
-    h_a += h_b;
-    h_b += h_c;
-    h_c += h_d;
-    h_d += h_e;
-    h_e += h_f;
-    h_f += h_g;
-    h_g += h_h;
-    h_h += 1;
-    h_a = h_a % 1000003;
-    h_b = h_b % 1000003;
-    h_c = h_c % 1000003;
-    h_d = h_d % 1000003;
-    h_e = h_e % 1000003;
-    h_f = h_f % 1000003;
-    h_g = h_g % 1000003;
-    h_h = h_h % 1000003;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    h_a = 1;
+    h_b = 2;
+    h_c = 3;
+    h_d = 4;
+    h_e = 5;
+    h_f = 6;
+    h_g = 7;
+    h_h = 8;
+    repeat 2000 {
+      h_a += h_b;
+      h_b += h_c;
+      h_c += h_d;
+      h_d += h_e;
+      h_e += h_f;
+      h_f += h_g;
+      h_g += h_h;
+      h_h += 1;
+      h_a = h_a % 1000003;
+      h_b = h_b % 1000003;
+      h_c = h_c % 1000003;
+      h_d = h_d % 1000003;
+      h_e = h_e % 1000003;
+      h_f = h_f % 1000003;
+      h_g = h_g % 1000003;
+      h_h = h_h % 1000003;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = h_a + h_b + h_c + h_d + h_e + h_f + h_g + h_h;

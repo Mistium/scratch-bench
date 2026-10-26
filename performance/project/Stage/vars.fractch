@@ -1,45 +1,53 @@
 def @k_vars_setchange() warp {
-  k_a = 0;
-  k_b = 0;
-  k_c = 0;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 300000 {
-    k_a = k_c;
-    k_b = k_a;
-    k_c = k_b;
-    k_c += 1;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_a = 0;
+    k_b = 0;
+    k_c = 0;
+    repeat 10000 {
+      k_a = k_c;
+      k_b = k_a;
+      k_c = k_b;
+      k_c += 1;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_c;
 }
 
 def @k_vars_many() warp {
-  k_a = 1;
-  k_b = 2;
-  k_c = 3;
-  k_d = 4;
-  k_e = 5;
-  k_f = 6;
-  k_g = 7;
-  k_h = 8;
+  b_n = 0;
   b_t0 = daysSince2000();
-  repeat 50000 {
-    k_a += k_b;
-    k_b += k_c;
-    k_c += k_d;
-    k_d += k_e;
-    k_e += k_f;
-    k_f += k_g;
-    k_g += k_h;
-    k_h += 1;
-    k_a = k_a % 1000003;
-    k_b = k_b % 1000003;
-    k_c = k_c % 1000003;
-    k_d = k_d % 1000003;
-    k_e = k_e % 1000003;
-    k_f = k_f % 1000003;
-    k_g = k_g % 1000003;
-    k_h = k_h % 1000003;
+  until (daysSince2000() - b_t0) * 86400000 >= b_budget {
+    k_a = 1;
+    k_b = 2;
+    k_c = 3;
+    k_d = 4;
+    k_e = 5;
+    k_f = 6;
+    k_g = 7;
+    k_h = 8;
+    repeat 2000 {
+      k_a += k_b;
+      k_b += k_c;
+      k_c += k_d;
+      k_d += k_e;
+      k_e += k_f;
+      k_f += k_g;
+      k_g += k_h;
+      k_h += 1;
+      k_a = k_a % 1000003;
+      k_b = k_b % 1000003;
+      k_c = k_c % 1000003;
+      k_d = k_d % 1000003;
+      k_e = k_e % 1000003;
+      k_f = k_f % 1000003;
+      k_g = k_g % 1000003;
+      k_h = k_h % 1000003;
+    }
+    b_n += 1;
   }
   b_t1 = daysSince2000();
   b_chk = k_a + k_b + k_c + k_d + k_e + k_f + k_g + k_h;
@@ -47,23 +55,23 @@ def @k_vars_many() warp {
 
 def @suite_vars() {
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_vars_setchange();
     @bench_round();
   }
-  @bench_end("vars_setchange", 2400000);
+  @bench_end("vars_setchange", 10000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     @k_vars_many();
     @bench_round();
   }
-  @bench_end("vars_many", 400000);
+  @bench_end("vars_many", 2000);
 
   @bench_begin();
-  repeat 9 {
+  repeat 7 {
     broadcast_wait hub_localvars;
     @bench_round();
   }
-  @bench_end("vars_local", 400000);
+  @bench_end("vars_local", 2000);
 }
