@@ -104,7 +104,7 @@ export const runOnce = async (
     while ((nl = buffer.indexOf("\n")) >= 0) {
       const raw = buffer.slice(0, nl).replace(ANSI, "").replace(/\r$/, "");
       buffer = buffer.slice(nl + 1);
-      const m = PROJECT_LINE.exec(raw);
+      const m = (command.projectLine ?? PROJECT_LINE).exec(raw);
       if (!m) continue;
       const now = performance.now();
       first ??= now;

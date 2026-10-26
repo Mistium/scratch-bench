@@ -2,6 +2,7 @@ export interface Command {
   cmd: string[];
   cwd?: string;
   env?: Record<string, string>;
+  projectLine?: RegExp;
 }
 
 export interface Launcher {

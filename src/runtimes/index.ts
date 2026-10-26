@@ -1,5 +1,6 @@
 import { mistwarp } from "./mistwarp.ts";
 import { nitrobolt } from "./nitrobolt.ts";
+import { oscratchl } from "./oscratchl.ts";
 import { penguinmod } from "./penguinmod.ts";
 import { scratch } from "./scratch.ts";
 import { scratchEverywhere } from "./scratch-everywhere.ts";
@@ -13,6 +14,7 @@ export const RUNTIMES: Runtime[] = [
   nitrobolt,
   penguinmod,
   scratchEverywhere,
+  oscratchl,
 ];
 
 export const selectRuntimes = (ids: string[] | undefined): Runtime[] => {
