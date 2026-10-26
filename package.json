@@ -19,6 +19,7 @@
     "@scratch/scratch-svg-renderer": "^15.1.1",
     "@scratch/scratch-vm": "^15.1.1",
     "esbuild": "0.28.2",
+    "fractch": "^0.9.0",
     "linkedom": "^0.18.14",
     "mistwarp-audio": "github:MistWarp/scratch-audio#ea64e571175aae4ef91527b4756991c18291a25a",
     "mistwarp-render": "github:MistWarp/scratch-render#1e01ed65f5334bb453a5dce69329f04bdb63b20b",

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { BUILD_DIR } from "./paths.ts";
+import { BUILD_DIR, ROOT } from "./paths.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
@@ -9,7 +9,8 @@ export interface Built {
 }
 
 const fractch = async (...args: string[]): Promise<string> => {
-  const bin = Bun.which("fractch") ??
+  const local = path.join(ROOT, "node_modules/.bin/fractch");
+  const bin = fs.existsSync(local) ? local : Bun.which("fractch") ??
     path.join(process.env.HOME ?? "", ".cache/.bun/bin/fractch");
   const proc = Bun.spawn([bin, ...args], {
     stdout: "pipe",

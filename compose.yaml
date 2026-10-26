@@ -1,0 +1,45 @@
+# The whole project in one container: the website (port 3000) with its nightly benchmark run, and, on first start, the
+# setup and the history backfill. Everything it needs is in the image; only this repository (with its parity/
+# submodule checked out) is needed to build it.
+#
+#   git submodule update --init
+#   GH_TOKEN=<a GitHub token> docker compose up --build -d
+#   docker compose logs -f           # setup and backfill progress
+#
+# Run the backfill and the nightly run with nothing else using the machine: the numbers are timings.
+#
+# Common commands:
+#   docker compose exec bench bun run backfill --dry-run
+#   docker compose exec bench bun run bench --runtime turbowarp --runs 3
+#   docker compose down              # keeps the results and the cache (add -v to delete them)
+
+services:
+  bench:
+    build:
+      context: .
+      args:
+        BENCH_REPO_SHA: ${BENCH_REPO_SHA:-}
+        BENCH_PARITY_SHA: ${BENCH_PARITY_SHA:-}
+        BENCH_CRON: ${BENCH_CRON:-0 3 * * *}
+        OSL_REF: ${OSL_REF:-c24c464307ca00ff93fa7f5c88c55f5431abd597}
+    image: scratch-bench
+    init: true
+    restart: unless-stopped
+    hostname: scratch-bench
+    ports:
+      - "${PORT:-3000}:3000"
+    shm_size: 2gb
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+      BENCH_TOKEN: ${BENCH_TOKEN:-}
+      BACKFILL: ${BACKFILL:-auto}
+      BACKFILL_ARGS: ${BACKFILL_ARGS:-}
+    volumes:
+      - results:/app/results
+      - cache:/app/.cache
+      - gocache:/home/node/.cache
+
+volumes:
+  results:
+  cache:
+  gocache:

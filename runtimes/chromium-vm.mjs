@@ -92,6 +92,7 @@ const server = http.createServer((req, res) => {
   const browser = await chromium.launch({
     executablePath: exe,
     args: [
+      ...(process.env.CHROME_NO_SANDBOX ? ["--no-sandbox"] : []),
       "--use-gl=angle",
       "--use-angle=swiftshader",
       "--enable-unsafe-swiftshader",

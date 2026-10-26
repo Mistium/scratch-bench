@@ -29,13 +29,15 @@ export const hostInfo = () => {
 };
 
 export const repoInfo = () => {
-  const sha = run(["git", "rev-parse", "HEAD"], ROOT);
+  const sha = run(["git", "rev-parse", "HEAD"], ROOT) ??
+    (process.env.BENCH_REPO_SHA || null);
   const dirty =
     (run(["git", "status", "--porcelain", "--untracked-files=no"], ROOT) ??
       "") !== "";
   return {
     sha,
     dirty,
-    parity_sha: run(["git", "rev-parse", "HEAD"], `${ROOT}/parity`),
+    parity_sha: run(["git", "rev-parse", "HEAD"], `${ROOT}/parity`) ??
+      (process.env.BENCH_PARITY_SHA || null),
   };
 };

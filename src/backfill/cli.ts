@@ -5,10 +5,13 @@ import { measureSuite } from "../measure-suite.ts";
 import { RUNTIMES, selectRuntimes } from "../runtimes/index.ts";
 import type { SuiteId } from "../runtimes/types.ts";
 import "../cleanup.ts";
+import { acquireLock } from "../lock.ts";
 import { buildLaunch } from "./build.ts";
 import { backfill } from "./engine.ts";
 import { schedule } from "./schedule.ts";
 import { realSource } from "./source.ts";
+
+const FINISHED_WITH_FAILURES = 3;
 
 const USAGE = `usage: bun run backfill [options]
 
@@ -26,6 +29,8 @@ writes the results into results/ (never over real nightly results). Resumable: f
   --concurrency N      builds in parallel (default 3; runs are always one at a time)
   --retry-failed       build and run failed versions again
   --dry-run            show what would be done and exit
+
+Exit status: 0 on success, 3 when it finished but some versions failed, 1 when the command itself failed.
 `;
 
 const { values: o } = parseArgs({
@@ -82,6 +87,12 @@ const main = async () => {
     if (!r.history) log(`skipping ${r.name}: it has no history spec`);
   }
 
+  if (!o["dry-run"] && !acquireLock()) {
+    throw new Error(
+      "another benchmark job is running (see .bench.lock in the results directory); try again when it finishes",
+    );
+  }
+
   log(
     `${runtimes.map((r) => r.name).join(", ")} on ${dates.length} dates (${
       dates[0]
@@ -109,7 +120,7 @@ const main = async () => {
     },
   );
   log(`\n${JSON.stringify(summary)}`);
-  return summary.failed > 0 ? 1 : 0;
+  return summary.failed > 0 ? FINISHED_WITH_FAILURES : 0;
 };
 
 main().then(

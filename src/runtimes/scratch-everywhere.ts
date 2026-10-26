@@ -75,6 +75,7 @@ const download = async (): Promise<Build> => {
       }
       fs.chmodSync(bin, 0o755);
     }
+    fs.mkdirSync(path.join(dest, "scratch-everywhere"), { recursive: true });
     bins[kind] = bin;
   }
   const b: Build = {
