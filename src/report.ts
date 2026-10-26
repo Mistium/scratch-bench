@@ -1,0 +1,167 @@
+import type { Summary } from "./stats.ts";
+
+export interface SuiteResult {
+  schema_version: 1;
+  timestamp: string;
+  suite: { id: string; source_hash: string };
+  repo: { sha: string | null; dirty: boolean; parity_sha: string | null };
+  runtime: {
+    id: string;
+    name: string;
+    kind: string;
+    version: string;
+    detail: Record<string, string>;
+    launcher: "headless" | "gui" | null;
+    display: string | null;
+  };
+  host: Record<string, unknown>;
+  runs: {
+    ok: boolean;
+    error?: string;
+    startup_ms: number | null;
+    run_ms: number | null;
+    wall_ms: number | null;
+    peak_rss_mb: number | null;
+    data?: unknown;
+    tail?: string[];
+  }[];
+  stats: Record<string, Summary | null>;
+  results: unknown;
+  error?: string;
+}
+
+const num = (
+  x: number,
+  digits = 4,
+) => (x >= 1000
+  ? Math.round(x).toLocaleString("en-US")
+  : Number(x.toPrecision(digits)).toString());
+
+const table = (header: string[], rows: string[][]): string => {
+  const widths = header.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length))
+  );
+  const line = (cells: string[]) =>
+    cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i])))
+      .join("  ");
+  return [
+    line(header),
+    widths.map((w) => "-".repeat(w)).join("  "),
+    ...rows.map(line),
+  ].join("\n");
+};
+
+type PerfBench = { ops_per_ms: Summary | null };
+
+export const renderReport = (results: SuiteResult[]): string => {
+  const out: string[] = [];
+
+  const perf = results.filter((r) => r.suite.id === "performance");
+  if (perf.length) {
+    const ids = [
+      ...new Set(
+        perf.flatMap((r) =>
+          Object.keys((r.results as Record<string, PerfBench>) ?? {})
+        ),
+      ),
+    ];
+    out.push("Performance: median ops/ms over runs (relative stddev)\n");
+    out.push(
+      table(
+        ["benchmark", ...perf.map((r) => r.runtime.name)],
+        ids.map((id) => [
+          id,
+          ...perf.map((r) => {
+            const s = ((r.results as Record<string, PerfBench>) ?? {})[id]
+              ?.ops_per_ms;
+            return s
+              ? `${num(s.median)} (${
+                s.mean ? ((s.stddev / s.mean) * 100).toFixed(1) : "0.0"
+              }%)`
+              : "-";
+          }),
+        ]),
+      ),
+    );
+    out.push("");
+  }
+
+  out.push(
+    "Startup and memory (median over successful runs; min-max in brackets)\n",
+  );
+  const range = (s: Summary | null | undefined, unit: string) =>
+    s ? `${num(s.median)}${unit} [${num(s.min)}-${num(s.max)}]` : "-";
+  out.push(
+    table(
+      [
+        "suite",
+        "runtime",
+        "launcher",
+        "runs ok",
+        "startup",
+        "run time",
+        "peak RSS",
+      ],
+      results.map((r) => [
+        r.suite.id,
+        r.runtime.name,
+        r.runtime.launcher
+          ? `${r.runtime.launcher}${
+            r.runtime.display ? `/${r.runtime.display}` : ""
+          }`
+          : "-",
+        `${r.runs.filter((x) => x.ok).length}/${r.runs.length}`,
+        range(r.stats.startup_ms, " ms"),
+        range(r.stats.run_ms, " ms"),
+        range(r.stats.peak_rss_mb, " MB"),
+      ]),
+    ),
+  );
+  out.push("");
+
+  const parity = results.filter((r) => r.suite.id === "parity");
+  if (parity.length) {
+    out.push("Parity\n");
+    for (const r of parity) {
+      const d = r.results as {
+        verdict: string;
+        passed: number | null;
+        total: number | null;
+        failed_groups: { name: string; passed: number; total: number }[];
+      } | null;
+      if (!d) {
+        out.push(
+          `${r.runtime.name}: no result (${
+            r.error ?? r.runs.find((x) => x.error)?.error ?? "unknown error"
+          })`,
+        );
+        continue;
+      }
+      const pct = d.total
+        ? ` (${((d.passed! / d.total) * 100).toFixed(1)}%)`
+        : "";
+      out.push(`${r.runtime.name}: ${d.verdict} ${d.passed}/${d.total}${pct}`);
+      for (const g of d.failed_groups) {
+        out.push(`  ${g.name}: ${g.passed}/${g.total}`);
+      }
+    }
+    out.push("");
+  }
+
+  const failed = results.filter((r) => r.runs.some((x) => !x.ok) || r.error);
+  if (failed.length) {
+    out.push("Failures\n");
+    for (const r of failed) {
+      if (r.error) out.push(`${r.suite.id} / ${r.runtime.name}: ${r.error}`);
+      r.runs.forEach((x, i) => {
+        if (!x.ok) {
+          out.push(
+            `${r.suite.id} / ${r.runtime.name} run ${i + 1}: ${x.error}`,
+          );
+        }
+      });
+    }
+    out.push("");
+  }
+  return out.join("\n");
+};

@@ -1,0 +1,3 @@
+[submodule "parity"]
+	path = parity
+	url = https://git.rotur.dev/Mist/scratch-parity.git

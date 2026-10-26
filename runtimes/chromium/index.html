@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<div id="stage" style="width:480px;height:360px"></div>
+<canvas id="c" width="480" height="360"></canvas>
+<script>
+const loadScript = (src) =>
+  new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("failed to load " + src));
+    document.head.appendChild(s);
+  });
+
+window.start = async (kind) => {
+  let vm;
+  if (kind === "turbowarp") {
+    await loadScript(
+      "/node_modules/@turbowarp/scaffolding/dist/scaffolding-min.js",
+    );
+    const scaffolding = new Scaffolding.Scaffolding();
+    scaffolding.setup();
+    scaffolding.appendTo(document.getElementById("stage"));
+    await scaffolding.loadProject(
+      await (await fetch("/project.sb3")).arrayBuffer(),
+    );
+    vm = scaffolding.vm;
+    scaffolding.start();
+    scaffolding.greenFlag();
+  } else {
+    for (
+      const s of [
+        "/node_modules/@scratch/scratch-vm/dist/web/scratch-vm.js",
+        "/node_modules/@scratch/scratch-render/dist/web/scratch-render.js",
+        "/node_modules/@scratch/scratch-svg-renderer/dist/web/scratch-svg-renderer.js",
+        "/node_modules/@scratch/scratch-storage/dist/web/scratch-storage.js",
+        "/audio.js",
+      ]
+    ) await loadScript(s);
+    vm = new VirtualMachine();
+    const audio = new ScratchAudio();
+    vm.attachAudioEngine(audio);
+    await audio.audioContext.resume();
+    const Storage = ScratchStorage.ScratchStorage || ScratchStorage.default ||
+      ScratchStorage;
+    vm.attachStorage(new Storage());
+    vm.attachRenderer(
+      new (ScratchRender.default || ScratchRender)(
+        document.getElementById("c"),
+      ),
+    );
+    const SVG = ScratchSVGRenderer.default || ScratchSVGRenderer;
+    vm.attachV2BitmapAdapter(new SVG.BitmapAdapter());
+    await vm.loadProject(await (await fetch("/project.sb3")).arrayBuffer());
+    vm.setTurboMode(false);
+    vm.start();
+    vm.greenFlag();
+  }
+  let printed = 0;
+  let idleSince = null;
+  setInterval(() => {
+    const list = Object.values(vm.runtime.getTargetForStage().variables)
+      .find((v) => v.type === "list" && v.name === "output");
+    if (list) {
+      while (printed < list.value.length) {
+        console.log("[PROJECT] " + String(list.value[printed++]));
+      }
+    }
+    if (vm.runtime.threads.length > 0) idleSince = null;
+    else {
+      idleSince = idleSince ?? Date.now();
+      if (Date.now() - idleSince > 2000) {
+        console.log("[BENCH-IDLE]");
+        idleSince = Infinity;
+      }
+    }
+  }, 50);
+};
+</script>

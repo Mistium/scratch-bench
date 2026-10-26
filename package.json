@@ -1,0 +1,25 @@
+{
+  "name": "scratch-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "bun src/cli.ts",
+    "setup": "bun src/cli.ts setup",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@scratch/scratch-render": "^15.1.1",
+    "@scratch/scratch-storage": "*",
+    "@scratch/scratch-svg-renderer": "^15.1.1",
+    "@scratch/scratch-vm": "^15.1.1",
+    "@turbowarp/scaffolding": "0.4.0",
+    "esbuild": "0.28.2",
+    "playwright-core": "^1.63.0",
+    "scratch-audio": "2.0.268",
+    "turbowarp-vm": "github:TurboWarp/scratch-vm#f26ff67e951258a84d25cad3acaf8804eb202318"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

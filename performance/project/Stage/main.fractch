@@ -50,6 +50,11 @@ var sc_x = 0;
 var sc_stop = 0;
 var sc_done = 0;
 
+def @log_text(text) "log text %s" warp {
+  procedures.call(arg0: text, mutation: {"tagName":"mutation","children":[],"proccode":"​​log​​ %s","argumentids":"[\"arg0\"]","warp":"false"});
+  append(output, text);
+}
+
 def @bench_begin() {
   b_round = 0;
   b_total = 0;
@@ -71,12 +76,12 @@ def @bench_round() {
 }
 
 def @bench_end(id, opc) {
-  append(output, arg("id") ++ " | " ++ round(b_total * 1000) / 1000 ++ " | " ++ b_chunks * arg("opc") ++ " | " ++ round(b_chunks * arg("opc") / b_total * 1000) / 1000 ++ " | " ++ round(b_bestrate * arg("opc") * 1000) / 1000 ++ " | " ++ b_chk);
+  @log_text(arg("id") ++ " | " ++ round(b_total * 1000) / 1000 ++ " | " ++ b_chunks * arg("opc") ++ " | " ++ round(b_chunks * arg("opc") / b_total * 1000) / 1000 ++ " | " ++ round(b_bestrate * arg("opc") * 1000) / 1000 ++ " | " ++ b_chk);
 }
 
 when flag {
   clear(output);
-  append(output, "id | total_ms | ops | ops_per_ms | best_ops_per_ms | checksum");
+  @log_text("id | total_ms | ops | ops_per_ms | best_ops_per_ms | checksum");
 
   @suite_loops();
   @suite_vars();
@@ -86,5 +91,5 @@ when flag {
   @suite_algos();
   @suite_sched();
 
-  append(output, "DONE");
+  @log_text("DONE");
 }
