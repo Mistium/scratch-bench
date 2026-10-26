@@ -16,6 +16,7 @@ export interface SetupInfo {
 
 export interface SetupOptions {
   offline: boolean;
+  gui: boolean;
 }
 
 export interface Runtime {

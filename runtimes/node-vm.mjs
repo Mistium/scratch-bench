@@ -1,14 +1,8 @@
-// usage: node node-vm.mjs <scratch|turbowarp> <project.sb3>
-// Runs a project in a scratch-vm under Node the way a host normally does: vm.start() drives the runtime's own frame
-// loop and the green flag is the only input. There is no renderer, audio or storage.
-// Every item the project appends to its stage list "output" is printed as "[PROJECT] <item>", which is the protocol
-// the orchestrator reads from every runtime. Exits by itself once no threads have run for 2 seconds.
 import fs from "fs";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 
-// scratch-vm warns about the project's blank placeholder costumes; drop only those warnings.
 for (const level of ["log", "warn"]) {
   const original = console[level];
   console[level] = (...a) => {
@@ -18,8 +12,6 @@ for (const level of ["log", "warn"]) {
   };
 }
 
-// scratch-vm's Node bundle reads an SVG default stylesheet at load time that the published package doesn't include.
-// It is only used when rasterizing SVG costumes, which the projects don't have.
 const readFileSync = fs.readFileSync;
 fs.readFileSync = (p, ...rest) => {
   if (
@@ -31,19 +23,34 @@ fs.readFileSync = (p, ...rest) => {
 
 process.stdout.on("error", () => process.exit(0));
 
+const VMS = {
+  scratch: { pkg: "@scratch/scratch-vm", compiler: false },
+  turbowarp: { pkg: "turbowarp-vm", compiler: true },
+  mistwarp: { pkg: "mistwarp-vm", compiler: true },
+  nitrobolt: { pkg: "nitrobolt-vm", compiler: true },
+  penguinmod: { pkg: "penguinmod-vm", compiler: true },
+};
+
 const [vmName, file] = process.argv.slice(2);
-if (!["scratch", "turbowarp"].includes(vmName) || !file) {
-  console.error("usage: node node-vm.mjs <scratch|turbowarp> <project.sb3>");
+if (!(vmName in VMS) || !file) {
+  console.error(
+    `usage: node node-vm.mjs <${Object.keys(VMS).join("|")}> <project.sb3>`,
+  );
   process.exit(2);
 }
 
-const VirtualMachine = require(
-  vmName === "turbowarp" ? "turbowarp-vm" : "@scratch/scratch-vm",
-);
+if (vmName === "penguinmod") {
+  const { DOMParser } = require("linkedom");
+  globalThis.DOMParser = DOMParser;
+  globalThis.location = new URL("http://localhost/");
+  globalThis.window = globalThis;
+}
+
+const VirtualMachine = require(VMS[vmName].pkg);
 fs.readFileSync = readFileSync;
 
 const vm = new VirtualMachine();
-if (vmName === "turbowarp") {
+if (VMS[vmName].compiler && typeof vm.setCompilerOptions === "function") {
   vm.setCompilerOptions({ enabled: true, warpTimer: false });
 }
 

@@ -9,11 +9,25 @@ const root = path.resolve(import.meta.dirname, "..");
 process.stdout.on("error", () => process.exit(0));
 
 const [kind, file] = process.argv.slice(2);
-if (!["scratch", "turbowarp"].includes(kind) || !file) {
+const KINDS = ["scratch", "turbowarp", "mistwarp", "nitrobolt", "penguinmod"];
+if (!KINDS.includes(kind) || !file) {
   console.error(
-    "usage: node chromium-vm.mjs <scratch|turbowarp> <project.sb3>",
+    "usage: node chromium-vm.mjs <scratch|turbowarp|mistwarp|nitrobolt|penguinmod> <project.sb3>",
   );
   process.exit(2);
+}
+
+const bundleDir = path.join(root, ".cache/runtimes/web", kind);
+let scripts;
+if (kind !== "scratch") {
+  const manifest = path.join(bundleDir, "manifest.json");
+  if (!fs.existsSync(manifest)) {
+    console.error(`no browser bundle for ${kind}; run \`bun run setup\` first`);
+    process.exit(2);
+  }
+  scripts = JSON.parse(fs.readFileSync(manifest, "utf8")).scripts.map((s) =>
+    `/web/${s}`
+  );
 }
 
 const audioPath = path.join(root, ".cache", "runtimes", "web", "audio.js");
@@ -44,14 +58,19 @@ const server = http.createServer((req, res) => {
   } else if (url === "/audio.js") p = audioPath;
   else if (url === "/project.sb3") p = path.resolve(file);
   else if (url.startsWith("/node_modules/")) p = path.join(root, url);
+  else if (url.startsWith("/web/")) p = path.join(bundleDir, url.slice(5));
   else if (/^\/(chunks|assets)\//.test(url)) {
     p = [
-      "@scratch/scratch-vm",
-      "@scratch/scratch-svg-renderer",
-      "@scratch/scratch-render",
-      "@scratch/scratch-storage",
-    ].map((m) => path.join(root, "node_modules", m, "dist/web", url))
-      .find((c) => fs.existsSync(c));
+      ...["vm", "render", "svg", "storage"].map((part) =>
+        path.join(bundleDir, part, url)
+      ),
+      ...[
+        "@scratch/scratch-vm",
+        "@scratch/scratch-svg-renderer",
+        "@scratch/scratch-render",
+        "@scratch/scratch-storage",
+      ].map((m) => path.join(root, "node_modules", m, "dist/web", url)),
+    ].find((c) => fs.existsSync(c));
   }
   if (!p) {
     res.writeHead(404).end();
@@ -78,6 +97,12 @@ const server = http.createServer((req, res) => {
       "--autoplay-policy=no-user-gesture-required",
     ],
   });
+  for (const sig of ["SIGTERM", "SIGINT"]) {
+    process.on(sig, async () => {
+      await browser.close().catch(() => {});
+      process.exit(143);
+    });
+  }
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.error("pageerror", e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
@@ -88,7 +113,7 @@ const server = http.createServer((req, res) => {
       else if (text === "[BENCH-IDLE]") resolve();
     });
   });
-  await page.evaluate((k) => window.start(k), kind);
+  await page.evaluate(([k, s]) => window.start(k, s), [kind, scripts]);
   await finished;
   await browser.close();
   server.close();

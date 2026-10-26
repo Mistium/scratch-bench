@@ -28,6 +28,7 @@ export interface SuiteResult {
   stats: Record<string, Summary | null>;
   results: unknown;
   error?: string;
+  skipped?: string;
 }
 
 const num = (
@@ -102,7 +103,7 @@ export const renderReport = (results: SuiteResult[]): string => {
         "run time",
         "peak RSS",
       ],
-      results.map((r) => [
+      results.filter((r) => !r.skipped).map((r) => [
         r.suite.id,
         r.runtime.name,
         r.runtime.launcher
@@ -129,6 +130,10 @@ export const renderReport = (results: SuiteResult[]): string => {
         total: number | null;
         failed_groups: { name: string; passed: number; total: number }[];
       } | null;
+      if (r.skipped) {
+        out.push(`${r.runtime.name}: skipped (${r.skipped})`);
+        continue;
+      }
       if (!d) {
         out.push(
           `${r.runtime.name}: no result (${
@@ -148,7 +153,9 @@ export const renderReport = (results: SuiteResult[]): string => {
     out.push("");
   }
 
-  const failed = results.filter((r) => r.runs.some((x) => !x.ok) || r.error);
+  const failed = results.filter((r) =>
+    !r.skipped && (r.runs.some((x) => !x.ok) || r.error)
+  );
   if (failed.length) {
     out.push("Failures\n");
     for (const r of failed) {

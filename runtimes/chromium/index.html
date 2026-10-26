@@ -12,32 +12,22 @@ const loadScript = (src) =>
     document.head.appendChild(s);
   });
 
-window.start = async (kind) => {
+window.start = async (kind, scripts) => {
   let vm;
-  if (kind === "turbowarp") {
-    await loadScript(
-      "/node_modules/@turbowarp/scaffolding/dist/scaffolding-min.js",
-    );
-    const scaffolding = new Scaffolding.Scaffolding();
-    scaffolding.setup();
-    scaffolding.appendTo(document.getElementById("stage"));
-    await scaffolding.loadProject(
-      await (await fetch("/project.sb3")).arrayBuffer(),
-    );
-    vm = scaffolding.vm;
-    scaffolding.start();
-    scaffolding.greenFlag();
-  } else {
+  {
     for (
-      const s of [
+      const src of scripts ?? [
         "/node_modules/@scratch/scratch-vm/dist/web/scratch-vm.js",
         "/node_modules/@scratch/scratch-render/dist/web/scratch-render.js",
         "/node_modules/@scratch/scratch-svg-renderer/dist/web/scratch-svg-renderer.js",
         "/node_modules/@scratch/scratch-storage/dist/web/scratch-storage.js",
         "/audio.js",
       ]
-    ) await loadScript(s);
+    ) await loadScript(src);
     vm = new VirtualMachine();
+    if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {
+      vm.setCompilerOptions({ enabled: true, warpTimer: false });
+    }
     const audio = new ScratchAudio();
     vm.attachAudioEngine(audio);
     await audio.audioContext.resume();

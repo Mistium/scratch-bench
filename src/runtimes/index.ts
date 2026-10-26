@@ -1,9 +1,19 @@
+import { mistwarp } from "./mistwarp.ts";
+import { nitrobolt } from "./nitrobolt.ts";
+import { penguinmod } from "./penguinmod.ts";
 import { scratch } from "./scratch.ts";
 import { scratchEverywhere } from "./scratch-everywhere.ts";
 import { turbowarp } from "./turbowarp.ts";
 import type { Runtime } from "./types.ts";
 
-export const RUNTIMES: Runtime[] = [scratch, turbowarp, scratchEverywhere];
+export const RUNTIMES: Runtime[] = [
+  scratch,
+  turbowarp,
+  mistwarp,
+  nitrobolt,
+  penguinmod,
+  scratchEverywhere,
+];
 
 export const selectRuntimes = (ids: string[] | undefined): Runtime[] => {
   if (!ids) return RUNTIMES;

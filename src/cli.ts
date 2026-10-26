@@ -89,7 +89,10 @@ const main = async (): Promise<number> => {
   const setups = new Map<string, SetupInfo | Error>();
   for (const rt of runtimes) {
     try {
-      const info = await rt.setup({ offline: opts.offline! });
+      const info = await rt.setup({
+        offline: opts.offline!,
+        gui: suites.some((x) => x.launcher === "gui"),
+      });
       setups.set(rt.id, info);
       log(`  ${rt.name}: ${info.version}`);
     } catch (e) {
@@ -145,7 +148,11 @@ const main = async (): Promise<number> => {
   log(renderReport(results));
   log(`Results saved to ${path.relative(process.cwd(), outDir)}`);
   if (opts.json) console.log(JSON.stringify(results, null, 2));
-  return results.some((r) => r.error || !r.runs.some((x) => x.ok)) ? 1 : 0;
+  return results.some((r) =>
+      !r.skipped && (r.error || !r.runs.some((x) => x.ok))
+    )
+    ? 1
+    : 0;
 };
 
 const runSuite = async (
@@ -185,7 +192,13 @@ const runSuite = async (
     kind = "gui";
     launcher = rt.gui;
   }
-  if (!launcher) return fail(`no ${suite.launcher} launcher`);
+  if (!launcher) {
+    const skipped = suite.launcher === "gui"
+      ? "no rendered (gui) launcher for this runtime yet"
+      : `no ${suite.launcher} launcher`;
+    log(`${suite.id} / ${rt.name}: skipped, ${skipped}`);
+    return { ...base, skipped };
+  }
   base.runtime.launcher = kind;
 
   const total = suite.id === "parity"

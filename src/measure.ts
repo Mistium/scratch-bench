@@ -17,7 +17,27 @@ const ANSI = /\x1b\[[0-9;]*m/g;
 const PROJECT_LINE = /\[PROJECT\] (.*)$/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const childrenOf = (pid: number): number[] => {
+  try {
+    const out = Bun.spawnSync(["pgrep", "-P", String(pid)], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    return out.stdout.toString().split("\n").filter(Boolean).map(Number);
+  } catch {
+    return [];
+  }
+};
+
+const descendantsOf = (pid: number): number[] =>
+  childrenOf(pid).flatMap((c) => [c, ...descendantsOf(c)]);
+
 const killGroup = (pid: number, signal: NodeJS.Signals) => {
+  for (const p of descendantsOf(pid).reverse()) {
+    try {
+      process.kill(p, signal);
+    } catch {}
+  }
   try {
     process.kill(-pid, signal);
   } catch {
