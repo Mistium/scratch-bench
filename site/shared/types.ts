@@ -76,6 +76,7 @@ export interface HistoryRuntime {
   peak_rss_mb: (number | null)[];
   parity_passed: (number | null)[];
   parity_total: (number | null)[];
+  backfilled: boolean[];
   bench: Record<string, (number | null)[]>;
   rsd: Record<string, (number | null)[]>;
 }

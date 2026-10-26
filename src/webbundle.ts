@@ -13,7 +13,7 @@ export interface WebRecipe {
   parts: WebPart[];
 }
 
-const SCRIPTS: Record<WebPart["name"], string> = {
+export const SCRIPTS: Record<WebPart["name"], string> = {
   vm: "scratch-vm.js",
   render: "scratch-render.js",
   svg: "scratch-svg-renderer.js",
@@ -24,7 +24,7 @@ const SCRIPTS: Record<WebPart["name"], string> = {
 const WEB_DIR = path.join(RUNTIME_DIR, "web");
 const SRC_DIR = path.join(RUNTIME_DIR, "src");
 
-const run = async (
+export const run = async (
   cmd: string[],
   cwd: string,
   env: Record<string, string> = {},
@@ -75,13 +75,15 @@ const stage = async (dep: string, spec: string) => {
   return dir;
 };
 
-const install = async (dir: string) => {
+export const install = async (dir: string) => {
   if (fs.existsSync(path.join(dir, "node_modules/.bench-installed"))) return;
   await run(["bun", "install", "--ignore-scripts"], dir);
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
 };
 
-const webpack = async (dir: string): Promise<"production" | "development"> => {
+export const webpack = async (
+  dir: string,
+): Promise<"production" | "development"> => {
   const cmd = ["node", "node_modules/webpack-cli/bin/cli.js", "--bail"];
   const legacy = { NODE_OPTIONS: "--openssl-legacy-provider" };
   try {
@@ -105,8 +107,18 @@ const buildPart = async (
     return "prebuilt";
   }
   const dir = await stage(part.dep, spec);
-  await install(dir);
-  if (part.how === "esbuild") {
+  return buildDirPart(part.name, dir, out, part.how);
+};
+
+export const buildDirPart = async (
+  name: WebPart["name"],
+  dir: string,
+  out: string,
+  how: "webpack" | "esbuild",
+  { installed = false }: { installed?: boolean } = {},
+): Promise<string> => {
+  if (!installed) await install(dir);
+  if (how === "esbuild") {
     const { buildSync } = await import("esbuild");
     const text = buildSync({
       entryPoints: [path.join(dir, "src/index.js")],
@@ -121,7 +133,7 @@ const buildPart = async (
     return "esbuild";
   }
   const dist = path.join(dir, "dist/web");
-  const mode = fs.existsSync(path.join(dist, SCRIPTS[part.name]))
+  const mode = fs.existsSync(path.join(dist, SCRIPTS[name]))
     ? "cached"
     : await webpack(dir);
   fs.cpSync(dist, out, { recursive: true });

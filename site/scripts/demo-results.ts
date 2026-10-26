@@ -153,8 +153,8 @@ const RUNTIMES: RuntimeSpec[] = [
     rss: 390,
     bumpEvery: 30,
     failRate: 0.03,
-    parityTotal: 0,
-    parityPassed: 0,
+    parityTotal: 2123,
+    parityPassed: 2026,
   },
   {
     id: "scratch-everywhere",

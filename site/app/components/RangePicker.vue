@@ -1,7 +1,11 @@
 <script setup lang="ts">
-const props = defineProps<{ scope?: "trend" }>();
+const props = defineProps<{ scope?: "trend" | "parity" }>();
 const state = useBenchState();
-const range = props.scope === "trend" ? state.trendRange : state.range;
+const range = props.scope === "trend"
+  ? state.trendRange
+  : props.scope === "parity"
+  ? state.parityRange
+  : state.range;
 const options = [
   { id: "30d", label: "30 days" },
   { id: "90d", label: "90 days" },

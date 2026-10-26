@@ -21,6 +21,40 @@ beforeAll(() => {
 });
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+describe("backfilled results", () => {
+  it("are flagged in the dataset and in the history", () => {
+    const run = path.join(dir, "2098-01-01T03-00-00-000Z");
+    fs.mkdirSync(run);
+    const src = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          dir,
+          fs.readdirSync(dir).sort()[0],
+          "performance-scratch.json",
+        ),
+        "utf8",
+      ),
+    );
+    fs.writeFileSync(
+      path.join(run, "performance-scratch.json"),
+      JSON.stringify({
+        ...src,
+        timestamp: "2098-01-01T03:00:00.000Z",
+        backfill: { date: "2098-01-01" },
+      }),
+    );
+    const ds = loadDataset(dir);
+    const flagged = ds.entries.filter((e) => e.backfilled);
+    expect(flagged.length).toBe(1);
+    expect(ds.entries.length - flagged.length).toBeGreaterThan(14);
+    const h = buildHistory(ds, { host: flagged[0].hostId });
+    const i = h.timestamps.indexOf("2098-01-01T03:00:00.000Z");
+    expect(h.runtimes.scratch.backfilled[i]).toBe(true);
+    expect(h.runtimes.scratch.backfilled[0]).toBe(false);
+    fs.rmSync(run, { recursive: true });
+  });
+});
+
 describe("loadDataset", () => {
   it("loads every run, recognises the demo flag and groups two hosts", () => {
     const ds = loadDataset(dir);
@@ -157,7 +191,7 @@ describe("queries", () => {
     );
     expect(scratch.parity?.total).toBe(2123);
     const pm = l.runtimes.find((r) => r.id === "penguinmod");
-    if (pm) expect(pm.parity).toBeNull();
+    if (pm) expect(pm.parity?.total).toBe(2123);
   });
 
   it("history is aligned to one timestamp axis, and bench filtering works", () => {

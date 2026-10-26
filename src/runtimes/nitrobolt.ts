@@ -10,5 +10,17 @@ export const nitrobolt = nodeVmRuntime(
       detail: { "vm-commit": commit, repo: "Nitro-Bolt/scratch-vm" },
     };
   },
-  { web: async () => forkStack("nitrobolt", { svg: true, storage: true }) },
+  {
+    web: async () => forkStack("nitrobolt", { svg: true, storage: true }),
+    history: {
+      since: { performance: "2025-08-01", parity: "2025-08-01" },
+      parts: [
+        { git: "Nitro-Bolt/scratch-vm", provides: { vm: "." } },
+        { git: "Nitro-Bolt/scratch-render", provides: { render: "." } },
+        { git: "TurboWarp/scratch-audio", provides: { audio: "." } },
+        { npm: "@nitro-bolt/scratch-storage", provides: "storage" },
+        { npm: "@turbowarp/scratch-svg-renderer", provides: "svg" },
+      ],
+    },
+  },
 );

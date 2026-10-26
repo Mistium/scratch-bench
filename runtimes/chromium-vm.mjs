@@ -17,9 +17,10 @@ if (!KINDS.includes(kind) || !file) {
   process.exit(2);
 }
 
-const bundleDir = path.join(root, ".cache/runtimes/web", kind);
+const bundleDir = process.env.BENCH_BUNDLE_DIR ??
+  path.join(root, ".cache/runtimes/web", kind);
 let scripts;
-if (kind !== "scratch") {
+if (kind !== "scratch" || process.env.BENCH_BUNDLE_DIR) {
   const manifest = path.join(bundleDir, "manifest.json");
   if (!fs.existsSync(manifest)) {
     console.error(`no browser bundle for ${kind}; run \`bun run setup\` first`);

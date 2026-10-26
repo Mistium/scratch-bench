@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { RUNTIME_DIR } from "../paths.ts";
+import { scratchEverywhereHistory } from "./scratch-everywhere-history.ts";
 import type { Runtime, SetupInfo } from "./types.ts";
 
 const REPO = "ScratchEverywhere/ScratchEverywhere";
@@ -112,6 +113,7 @@ export const scratchEverywhere: Runtime = {
   id: "scratch-everywhere",
   name: "Scratch Everywhere!",
   kind: "native",
+  history: scratchEverywhereHistory,
   async setup({ offline }): Promise<SetupInfo> {
     if (process.env.SE_BINARY && process.env.SE_GUI_BINARY) {
       return {

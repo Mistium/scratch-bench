@@ -136,10 +136,12 @@ export const buildHistory = (ds: Dataset, q: HistoryQuery = {}): History => {
       peak_rss_mb: blank(),
       parity_passed: blank(),
       parity_total: blank(),
+      backfilled: timestamps.map(() => false),
       bench: {},
       rsd: {},
     });
     r.versions[i] = e.runtime.version;
+    if (e.backfilled) r.backfilled[i] = true;
     if (hasPerformance(e)) {
       suiteHashes[i] ??= e.suiteHash || null;
       shas[i] ??= e.repoSha;

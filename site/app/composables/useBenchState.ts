@@ -19,6 +19,7 @@ export const useBenchState = () => ({
   tab: useQueryState<"current" | "historical">("tab", "current"),
   mainMode: useQueryState<"absolute" | "relative">("mmode", "absolute"),
   trendRange: useQueryState<"30d" | "90d" | "1y" | "all">("trange", "90d"),
+  parityRange: useQueryState<"30d" | "90d" | "1y" | "all">("prange", "all"),
 });
 
 export const validCategories = (ids: string[]) =>

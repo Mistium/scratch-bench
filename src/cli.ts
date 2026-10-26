@@ -5,7 +5,7 @@ import "./cleanup.ts";
 import { buildSuite, type Built } from "./build.ts";
 import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
-import { runOnce, type RunResult } from "./measure.ts";
+import { measureSuite } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
@@ -207,81 +207,16 @@ const runSuite = async (
   log(
     `${suite.id} / ${rt.name} (${kind}): ${total} run${total > 1 ? "s" : ""}`,
   );
-  const datas: unknown[] = [];
-  for (let i = 1; i <= total; i++) {
-    let run: RunResult;
-    let display = null;
-    try {
-      let command = launcher.command(built.sb3);
-      if (launcher.display) {
-        display = await startDisplay(opts.display as DisplayKind);
-        base.runtime.display = display.backend;
-        command = display.wrap(command);
-      }
-      run = await runOnce(command, suite, timeoutMs);
-    } catch (e) {
-      run = {
-        ok: false,
-        error: (e as Error).message,
-        startup_ms: null,
-        run_ms: null,
-        wall_ms: null,
-        peak_rss_mb: null,
-        lines: [],
-        exit_code: null,
-      };
-    } finally {
-      await display?.stop();
-    }
-    const data = run.ok ? suite.parse(run.lines) : undefined;
-    if (data !== undefined) datas.push(data);
-    base.runs.push({
-      ok: run.ok,
-      error: run.error,
-      startup_ms: run.startup_ms,
-      run_ms: run.run_ms,
-      wall_ms: run.wall_ms,
-      peak_rss_mb: run.peak_rss_mb,
-      data,
-      tail: run.ok ? undefined : run.lines.slice(-30),
-    });
-    log(
-      run.ok
-        ? `  run ${i}/${total}: startup ${run.startup_ms} ms, run ${run.run_ms} ms, peak ${run.peak_rss_mb} MB`
-        : `  run ${i}/${total}: FAILED ${run.error}`,
-    );
-  }
-
-  const ok = base.runs.filter((r) => r.ok);
-  for (
-    const metric of ["startup_ms", "run_ms", "wall_ms", "peak_rss_mb"] as const
-  ) {
-    base.stats[metric] = summarize(
-      ok.map((r) => r[metric]!).filter((x) => x !== null),
-    );
-  }
-  if (suite.id === "performance") {
-    const perRun = datas as Record<
-      string,
-      { ops_per_ms: number; total_ms: number }
-    >[];
-    const ids = [...new Set(perRun.flatMap((d) => Object.keys(d)))];
-    base.results = Object.fromEntries(
-      ids.map((id) => [
-        id,
-        {
-          ops_per_ms: summarize(
-            perRun.map((d) => d[id]?.ops_per_ms).filter((x) => x !== undefined),
-          ),
-          total_ms: summarize(
-            perRun.map((d) => d[id]?.total_ms).filter((x) => x !== undefined),
-          ),
-        },
-      ]),
-    );
-  } else if (datas.length) {
-    base.results = datas[datas.length - 1];
-  }
+  const measured = await measureSuite(suite, launcher, built.sb3, {
+    runs: total,
+    timeoutMs,
+    displayKind: opts.display as DisplayKind,
+    log,
+  });
+  base.runs = measured.runs;
+  base.stats = measured.stats;
+  base.results = measured.results;
+  base.runtime.display = measured.display;
   return base;
 };
 

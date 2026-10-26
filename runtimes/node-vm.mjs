@@ -46,7 +46,7 @@ if (vmName === "penguinmod") {
   globalThis.window = globalThis;
 }
 
-const VirtualMachine = require(VMS[vmName].pkg);
+const VirtualMachine = require(process.env.BENCH_VM_DIR ?? VMS[vmName].pkg);
 fs.readFileSync = readFileSync;
 
 const vm = new VirtualMachine();

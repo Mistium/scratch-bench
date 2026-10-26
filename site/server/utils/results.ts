@@ -26,6 +26,7 @@ export interface Entry {
   peak_rss_mb: Summary | null;
   benchmarks: Record<string, Summary | null>;
   parity: ParitySummary | null;
+  backfilled: boolean;
 }
 
 export interface Dataset {
@@ -155,6 +156,7 @@ export const parseResult = (
     peak_rss_mb: toSummary(stats.peak_rss_mb),
     benchmarks,
     parity,
+    backfilled: isObject(json.backfill),
   };
 };
 

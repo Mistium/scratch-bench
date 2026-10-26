@@ -9,7 +9,9 @@
     "site:dev": "cd site && bun run dev",
     "site:build": "cd site && bun run build",
     "site:demo": "cd site && bun run demo",
-    "site:test": "cd site && bun run test"
+    "site:test": "cd site && bun run test",
+    "backfill": "bun src/backfill/cli.ts",
+    "test": "bun test src"
   },
   "dependencies": {
     "@scratch/scratch-render": "^15.1.1",
@@ -32,7 +34,7 @@
     "penguinmod-render": "github:PenguinMod/PenguinMod-Render#89a587aff84e0a62daf907fba464d7e02f995027",
     "penguinmod-storage": "github:PenguinMod/PenguinMod-Storage#687019085e83fc83d39f3b96b41f229e8d95d6bc",
     "penguinmod-svg-renderer": "github:PenguinMod/penguinmod-svg-renderer#62a2be1e440ff6993cf5a5f5fac6f8ac60423bfb",
-    "penguinmod-vm": "github:PenguinMod/PenguinMod-Vm#75ef6994e55270b9c2a2f3cb2edf6a5bf31cdf2a",
+    "penguinmod-vm": "github:PenguinMod/PenguinMod-Vm#a3abced4f6daa758474c80d017195409854ed872",
     "playwright-core": "^1.63.0",
     "scratch-audio": "2.0.268",
     "turbowarp-audio": "github:TurboWarp/scratch-audio#dc47bf3bc177289531ed8a4fb616fed895dc303a",
