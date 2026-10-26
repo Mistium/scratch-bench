@@ -9,7 +9,7 @@ def @k_str_join() warp {
     b_n += 1;
   }
   b_t1 = daysSince2000();
-  b_chk = k_s.length;
+  b_chk = length(k_s);
 }
 
 def @k_str_letter() warp {
@@ -50,7 +50,7 @@ def @k_str_contains() warp {
       if contains(k_s, "hij") {
         k_acc += 2;
       }
-      k_acc += k_s.length;
+      k_acc += length(k_s);
     }
     b_n += 1;
   }

@@ -89,6 +89,7 @@ when flag {
   @suite_strings();
   @suite_lists();
   @suite_algos();
+  @suite_apps();
   @suite_sched();
 
   @log_text("DONE");
