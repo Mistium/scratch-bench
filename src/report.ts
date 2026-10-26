@@ -1,3 +1,9 @@
+import { CATEGORIES, CATEGORY_IDS } from "../site/shared/benchmarks.ts";
+import {
+  type Medians,
+  SCORE_VERSION,
+  scoreRuntime,
+} from "../site/shared/scoring.ts";
 import type { Summary } from "./stats.ts";
 
 export interface SuiteResult {
@@ -81,6 +87,31 @@ export const renderReport = (results: SuiteResult[]): string => {
               }%)`
               : "-";
           }),
+        ]),
+      ),
+    );
+    out.push("");
+
+    const mediansOf = (r: SuiteResult): Medians =>
+      Object.fromEntries(
+        Object.entries((r.results as Record<string, PerfBench>) ?? {}).map((
+          [id, v],
+        ) => [id, v.ops_per_ms?.median ?? null]),
+      );
+    out.push(
+      `Scores: weighted geometric mean of ops/ms, higher is faster (scoring version ${SCORE_VERSION})\n`,
+    );
+    const scored = perf
+      .map((r) => ({ r, s: scoreRuntime(mediansOf(r)) }))
+      .sort((a, b) => (b.s.total ?? -1) - (a.s.total ?? -1));
+    const x = (v: number | null | undefined) => (v == null ? "-" : num(v));
+    out.push(
+      table(
+        ["runtime", "overall", ...CATEGORY_IDS.map((c) => CATEGORIES[c].label)],
+        scored.map(({ r, s }) => [
+          r.runtime.name,
+          x(s.total),
+          ...CATEGORY_IDS.map((c) => x(s.categories[c].score)),
         ]),
       ),
     );

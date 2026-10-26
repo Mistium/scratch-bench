@@ -5,7 +5,11 @@
   "scripts": {
     "bench": "bun src/cli.ts",
     "setup": "bun src/cli.ts setup",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "site:dev": "cd site && bun run dev",
+    "site:build": "cd site && bun run build",
+    "site:demo": "cd site && bun run demo",
+    "site:test": "cd site && bun run test"
   },
   "dependencies": {
     "@scratch/scratch-render": "^15.1.1",

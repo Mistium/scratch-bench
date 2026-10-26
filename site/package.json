@@ -1,0 +1,29 @@
+{
+  "name": "scratch-bench-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "node .output/server/index.mjs",
+    "typecheck": "nuxt prepare && vue-tsc --noEmit -p .nuxt/tsconfig.app.json && vue-tsc --noEmit -p .nuxt/tsconfig.server.json && vue-tsc --noEmit -p .nuxt/tsconfig.shared.json",
+    "test": "vitest run",
+    "demo": "bun scripts/demo-results.ts",
+    "css:classes": "bun scripts/css-classes.ts",
+    "e2e": "node tests/e2e/smoke.mjs"
+  },
+  "dependencies": {
+    "croner": "^9.0.0",
+    "echarts": "6.1.0",
+    "nuxt": "4.6.2",
+    "vue": "3.5.44",
+    "vue-echarts": "8.3.2",
+    "vue-router": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "5",
+    "vitest": "latest",
+    "vue-tsc": "latest"
+  }
+}
