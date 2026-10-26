@@ -1,0 +1,8 @@
+# Projects
+*.sb3
+
+# Data
+*.csv
+
+# Dependencies
+node_modules/

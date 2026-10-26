@@ -1,0 +1,184 @@
+def @k_algo_sort() warp {
+  clear(l_a);
+  k_seed = 12345;
+  repeat 400 {
+    k_seed = k_seed * 16807 % 2147483647;
+    append(l_a, k_seed % 100000);
+  }
+  k_i = 0;
+  b_t0 = daysSince2000();
+  repeat 399 {
+    k_j = 1;
+    repeat 399 - k_i {
+      if lists["l_a"][k_j] > lists["l_a"][k_j + 1] {
+        k_x = lists["l_a"][k_j];
+        lists["l_a"][k_j] = lists["l_a"][k_j + 1];
+        lists["l_a"][k_j + 1] = k_x;
+      }
+      k_j += 1;
+    }
+    k_i += 1;
+  }
+  b_t1 = daysSince2000();
+  b_chk = lists["l_a"][1] + lists["l_a"][200] + lists["l_a"][400];
+}
+
+def @k_algo_sieve() warp {
+  clear(l_flags);
+  repeat 100000 {
+    append(l_flags, 1);
+  }
+  k_acc = 0;
+  b_t0 = daysSince2000();
+  k_i = 2;
+  repeat 99999 {
+    if lists["l_flags"][k_i] == 1 {
+      k_acc += 1;
+      k_j = k_i * k_i;
+      until k_j > 100000 {
+        lists["l_flags"][k_j] = 0;
+        k_j += k_i;
+      }
+    }
+    k_i += 1;
+  }
+  b_t1 = daysSince2000();
+  b_chk = k_acc;
+}
+
+def @k_algo_matmul() warp {
+  clear(l_a);
+  clear(l_b);
+  clear(l_c);
+  k_seed = 777;
+  repeat 784 {
+    k_seed = k_seed * 16807 % 2147483647;
+    append(l_a, k_seed % 10);
+    k_seed = k_seed * 16807 % 2147483647;
+    append(l_b, k_seed % 10);
+    append(l_c, 0);
+  }
+  b_t0 = daysSince2000();
+  k_i = 0;
+  repeat 28 {
+    k_j = 0;
+    repeat 28 {
+      k_acc = 0;
+      k_n = 0;
+      repeat 28 {
+        k_acc += lists["l_a"][k_i * 28 + k_n + 1] * lists["l_b"][k_n * 28 + k_j + 1];
+        k_n += 1;
+      }
+      lists["l_c"][k_i * 28 + k_j + 1] = k_acc;
+      k_j += 1;
+    }
+    k_i += 1;
+  }
+  b_t1 = daysSince2000();
+  b_chk = lists["l_c"][1] + lists["l_c"][400] + lists["l_c"][784];
+}
+
+def @fib(n) warp {
+  if arg("n") < 2 {
+    fib_acc += arg("n");
+  } else {
+    @fib(arg("n") - 1);
+    @fib(arg("n") - 2);
+  }
+}
+
+def @k_algo_fib() warp {
+  fib_acc = 0;
+  b_t0 = daysSince2000();
+  @fib(22);
+  b_t1 = daysSince2000();
+  b_chk = fib_acc;
+}
+
+var ack_r = 0;
+
+def @ack(m, n) warp {
+  ack_acc += 1;
+  if arg("m") == 0 {
+    ack_r = arg("n") + 1;
+  } else {
+    if arg("n") == 0 {
+      @ack(arg("m") - 1, 1);
+    } else {
+      @ack(arg("m"), arg("n") - 1);
+      @ack(arg("m") - 1, ack_r);
+    }
+  }
+}
+
+def @k_algo_ack() warp {
+  ack_acc = 0;
+  b_t0 = daysSince2000();
+  @ack(3, 5);
+  b_t1 = daysSince2000();
+  b_chk = ack_r * 1000000 + ack_acc;
+}
+
+def @k_algo_primes() warp {
+  k_acc = 0;
+  k_i = 1;
+  b_t0 = daysSince2000();
+  repeat 6000 {
+    k_i += 1;
+    k_j = 2;
+    k_n = 1;
+    until k_j * k_j > k_i || k_n == 0 {
+      if k_i % k_j == 0 {
+        k_n = 0;
+      }
+      k_j += 1;
+    }
+    k_acc += k_n;
+  }
+  b_t1 = daysSince2000();
+  b_chk = k_acc;
+}
+
+def @suite_algos() {
+  @bench_begin();
+  repeat 9 {
+    @k_algo_sort();
+    @bench_round();
+  }
+  @bench_end("algo_sort", 638400);
+
+  @bench_begin();
+  repeat 9 {
+    @k_algo_sieve();
+    @bench_round();
+  }
+  @bench_end("algo_sieve", 800000);
+
+  @bench_begin();
+  repeat 9 {
+    @k_algo_matmul();
+    @bench_round();
+  }
+  @bench_end("algo_matmul", 175616);
+
+  @bench_begin();
+  repeat 9 {
+    @k_algo_fib();
+    @bench_round();
+  }
+  @bench_end("algo_fib", 458504);
+
+  @bench_begin();
+  repeat 9 {
+    @k_algo_ack();
+    @bench_round();
+  }
+  @bench_end("algo_ack", 339504);
+
+  @bench_begin();
+  repeat 9 {
+    @k_algo_primes();
+    @bench_round();
+  }
+  @bench_end("algo_primes", 48000);
+}

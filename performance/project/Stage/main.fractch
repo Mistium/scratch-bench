@@ -1,0 +1,83 @@
+var output = [];
+
+// timing stuff
+var b_t0 = 0;
+var b_t1 = 0;
+var b_ms = 0;
+var b_round = 0;
+var b_total = 0;
+var b_best = 0;
+var b_chk = 0;
+
+// stuff (very descriptive ik)
+var k_i = 0;
+var k_j = 0;
+var k_n = 0;
+var k_a = 0;
+var k_b = 0;
+var k_c = 0;
+var k_d = 0;
+var k_e = 0;
+var k_f = 0;
+var k_g = 0;
+var k_h = 0;
+var k_x = 0;
+var k_y = 0;
+var k_z = 0;
+var k_acc = 0;
+var k_s = "";
+var k_s2 = "";
+var k_t = "";
+var k_seed = 1;
+var fib_acc = 0;
+var ack_acc = 0;
+
+var l_a = [];
+var l_b = [];
+var l_c = [];
+var l_flags = [];
+
+// stuff but schedular edition
+var sc_n = 0;
+var sc_hits = 0;
+var sc_ready = 0;
+var sc_gate = 0;
+var sc_tick = 0;
+var sc_x = 0;
+
+def @bench_begin() {
+  b_round = 0;
+  b_total = 0;
+  b_best = 1000000000;
+  b_chk = 0;
+}
+
+def @bench_round() {
+  b_ms = (b_t1 - b_t0) * 86400000;
+  if b_round > 0 {
+    b_total += b_ms;
+    if b_ms < b_best {
+      b_best = b_ms;
+    }
+  }
+  b_round += 1;
+}
+
+def @bench_end(id, ops) {
+  append(output, arg("id") ++ " | " ++ round(b_total * 1000) / 1000 ++ " | " ++ round(b_best * 1000) / 1000 ++ " | " ++ arg("ops") ++ " | " ++ b_chk);
+}
+
+when flag {
+  clear(output);
+  append(output, "id | total_ms | best_ms | ops | checksum");
+
+  @suite_loops();
+  @suite_vars();
+  @suite_math();
+  @suite_strings();
+  @suite_lists();
+  @suite_algos();
+  @suite_sched();
+
+  append(output, "DONE");
+}

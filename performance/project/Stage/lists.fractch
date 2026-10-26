@@ -1,0 +1,121 @@
+def @k_list_append() warp {
+  b_t0 = daysSince2000();
+  k_i = 0;
+  repeat 200 {
+    clear(l_a);
+    repeat 1000 {
+      append(l_a, k_i);
+      k_i += 1;
+    }
+  }
+  b_t1 = daysSince2000();
+  b_chk = l_a.length + k_i;
+}
+
+def @k_list_fill() warp {
+  clear(l_b);
+  repeat 100000 {
+    append(l_b, k_i);
+    k_i += 1;
+  }
+}
+
+def @k_list_read() warp {
+  k_acc = 0;
+  k_i = 0;
+  b_t0 = daysSince2000();
+  repeat 300000 {
+    k_i += 1;
+    k_acc += lists["l_b"][k_i * 7919 % 100000 + 1];
+  }
+  b_t1 = daysSince2000();
+  b_chk = k_acc;
+}
+
+def @k_list_replace() warp {
+  k_i = 0;
+  b_t0 = daysSince2000();
+  repeat 300000 {
+    k_i += 1;
+    lists["l_b"][k_i * 7919 % 100000 + 1] = k_i;
+  }
+  b_t1 = daysSince2000();
+  b_chk = lists["l_b"][1] + lists["l_b"][100000];
+}
+
+def @k_list_insdel() warp {
+  clear(l_c);
+  repeat 1000 {
+    append(l_c, 1);
+  }
+  k_i = 0;
+  b_t0 = daysSince2000();
+  repeat 100000 {
+    k_i += 1;
+    lists["l_c"].insert(500, k_i);
+    lists["l_c"].delete(501);
+  }
+  b_t1 = daysSince2000();
+  b_chk = lists["l_c"][500] + l_c.length;
+}
+
+def @k_list_search() warp {
+  clear(l_c);
+  k_i = 0;
+  repeat 1000 {
+    k_i += 1;
+    append(l_c, k_i);
+  }
+  k_acc = 0;
+  k_i = 0;
+  b_t0 = daysSince2000();
+  repeat 3000 {
+    k_i += 1;
+    k_acc += lists["l_c"].indexof(k_i % 1000 + 1);
+    if lists["l_c"].contains(1001) {
+      k_acc += 1;
+    }
+  }
+  b_t1 = daysSince2000();
+  b_chk = k_acc;
+}
+
+def @suite_lists() {
+  @bench_begin();
+  repeat 9 {
+    @k_list_append();
+    @bench_round();
+  }
+  @bench_end("list_append", 1600000);
+
+  k_i = 0;
+  @k_list_fill();
+
+  @bench_begin();
+  repeat 9 {
+    @k_list_read();
+    @bench_round();
+  }
+  @bench_end("list_read", 2400000);
+
+  @bench_begin();
+  repeat 9 {
+    @k_list_replace();
+    @bench_round();
+  }
+  @bench_end("list_replace", 2400000);
+
+  @bench_begin();
+  repeat 9 {
+    @k_list_insdel();
+    @bench_round();
+  }
+  @bench_end("list_insdel", 1600000);
+
+  @bench_begin();
+  repeat 9 {
+    @k_list_search();
+    @bench_round();
+  }
+  @bench_end("list_search", 48000);
+}

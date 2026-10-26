@@ -1,0 +1,24 @@
+sprite "Worker" hidden;
+
+when clone {
+  sc_ready += 1;
+}
+
+when broadcast sc_run {
+  repeat 1000 {
+    sc_n += 1;
+  }
+}
+
+when broadcast sc_fan {
+  sc_hits += 1;
+}
+
+when broadcast sc_poll {
+  wait_until sc_gate == 1;
+  sc_n += 1;
+}
+
+when broadcast sc_cleanup {
+  delete_clone;
+}

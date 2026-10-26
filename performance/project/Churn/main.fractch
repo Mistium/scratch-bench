@@ -1,0 +1,6 @@
+sprite "Churn" hidden;
+
+when clone {
+  sc_hits += 1;
+  delete_clone;
+}

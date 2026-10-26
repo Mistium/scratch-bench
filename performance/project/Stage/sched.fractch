@@ -1,0 +1,157 @@
+def @sched_looptick() {
+  @bench_begin();
+  repeat 5 {
+    sc_n = 0;
+    b_t0 = daysSince2000();
+    repeat 200000 {
+      sc_n += 1;
+    }
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_n;
+  @bench_end("sched_looptick", 800000);
+}
+
+def @sched_pingpong() {
+  @bench_begin();
+  repeat 5 {
+    sc_hits = 0;
+    b_t0 = daysSince2000();
+    repeat 50000 {
+      broadcast_wait sc_ping;
+    }
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_hits;
+  @bench_end("sched_pingpong", 200000);
+}
+
+def @sched_restart() {
+  @bench_begin();
+  repeat 5 {
+    sc_x = 0;
+    b_t0 = daysSince2000();
+    repeat 30000 {
+      broadcast sc_long;
+    }
+    broadcast_wait sc_long;
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_x;
+  @bench_end("sched_restart", 120000);
+}
+
+def @sched_clonechurn() {
+  @bench_begin();
+  repeat 5 {
+    sc_hits = 0;
+    b_t0 = daysSince2000();
+    k_n = 0;
+    repeat 50 {
+      k_n += 100;
+      repeat 100 {
+        clone "Churn";
+      }
+      wait_until sc_hits == k_n;
+    }
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_hits;
+  @bench_end("sched_clonechurn", 20000);
+}
+
+def @sched_spawn() {
+  sc_ready = 0;
+  repeat 100 {
+    clone "Worker";
+  }
+  wait_until sc_ready == 100;
+}
+
+def @sched_threads() {
+  @bench_begin();
+  repeat 5 {
+    sc_n = 0;
+    b_t0 = daysSince2000();
+    broadcast sc_run;
+    wait_until sc_n == 101 * 1000;
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_n;
+  @bench_end("sched_threads", 404000);
+}
+
+def @sched_fanout() {
+  @bench_begin();
+  repeat 5 {
+    sc_hits = 0;
+    b_t0 = daysSince2000();
+    repeat 1000 {
+      broadcast sc_fan;
+    }
+    wait_until sc_hits == 101 * 1000;
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_hits;
+  @bench_end("sched_fanout", 404000);
+}
+
+def @sched_fanwait() {
+  @bench_begin();
+  repeat 5 {
+    sc_hits = 0;
+    b_t0 = daysSince2000();
+    repeat 500 {
+      broadcast_wait sc_fan;
+    }
+    b_t1 = daysSince2000();
+    @bench_round();
+  }
+  b_chk = sc_hits;
+  @bench_end("sched_fanwait", 202000);
+}
+
+def @sched_waituntil() {
+  @bench_begin();
+  repeat 5 {
+    sc_gate = 0;
+    sc_n = 0;
+    broadcast sc_poll;
+    repeat 3 {
+      sc_tick += 1;
+    }
+    b_t0 = daysSince2000();
+    repeat 10000 {
+      sc_tick += 1;
+    }
+    b_t1 = daysSince2000();
+    sc_gate = 1;
+    wait_until sc_n == 101;
+    @bench_round();
+  }
+  b_chk = sc_n;
+  @bench_end("sched_waituntil", 40000);
+}
+
+def @sched_cleanup() {
+  broadcast_wait sc_cleanup;
+}
+
+def @suite_sched() {
+  @sched_looptick();
+  @sched_pingpong();
+  @sched_restart();
+  @sched_clonechurn();
+  @sched_spawn();
+  @sched_threads();
+  @sched_fanout();
+  @sched_fanwait();
+  @sched_waituntil();
+  @sched_cleanup();
+}

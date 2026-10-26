@@ -1,0 +1,8 @@
+{
+  "name": "scratch-performance-bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@scratch/scratch-vm": "^15.1.1"
+  }
+}
