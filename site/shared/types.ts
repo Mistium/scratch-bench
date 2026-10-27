@@ -75,10 +75,17 @@ export interface LatestRuntime {
   parity: (ParitySummary & { timestamp: string; stale: boolean }) | null;
 }
 
+export interface LatestParity {
+  id: string;
+  name: string;
+  parity: ParitySummary & { timestamp: string; stale: boolean };
+}
+
 export interface Latest {
   host: string;
   timestamp: string | null;
   runtimes: LatestRuntime[];
+  parity: LatestParity[];
 }
 
 export interface HistoryRuntime {

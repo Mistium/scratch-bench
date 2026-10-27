@@ -144,7 +144,20 @@ export const buildLatest = (
         : null,
     };
   });
-  return { host, timestamp: latestPerf, runtimes };
+  const parityIds = [...new Set(par.map((e) => e.runtime.id))];
+  const parity = parityIds.map((id) => {
+    const q = [...par].reverse().find((e) => e.runtime.id === id)!;
+    return {
+      id,
+      name: q.runtime.name,
+      parity: {
+        ...q.parity!,
+        timestamp: q.timestamp,
+        stale: q.timestamp !== latestParity,
+      },
+    };
+  });
+  return { host, timestamp: latestPerf, runtimes, parity };
 };
 
 export interface HistoryQuery {

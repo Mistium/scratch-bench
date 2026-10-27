@@ -3,7 +3,7 @@ const { host, baseline } = useBenchState();
 const { data: latest } = await useLatestData(host);
 
 const rows = computed(() =>
-  (latest.value?.runtimes ?? [])
+  (latest.value?.parity ?? [])
     .map((r) => {
       const p = r.parity;
       const ratio = p && p.total ? (p.passed ?? 0) / p.total : null;
