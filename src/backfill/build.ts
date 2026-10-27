@@ -61,6 +61,13 @@ const prepareRepo = async (
   const workspace = sparse.length > 0;
   if (workspace) {
     const pkgFile = path.join(work, "package.json");
+    if (!fs.existsSync(pkgFile)) {
+      throw new Error(
+        `${p.git}@${
+          p.commit.slice(0, 7)
+        } has no root package.json (an incomplete commit), so it cannot be built`,
+      );
+    }
     const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
     const keep = new Set(sparse);
     pkg.workspaces = (Array.isArray(pkg.workspaces)

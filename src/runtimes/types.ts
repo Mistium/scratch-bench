@@ -38,6 +38,7 @@ export interface GitPart {
   branch?: string;
   provides: Record<string, string>;
   shared?: string[];
+  fallback?: Record<string, string>;
 }
 
 export interface NpmPart {

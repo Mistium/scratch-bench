@@ -10,6 +10,7 @@ export interface Source {
     opts: { branch?: string; paths?: string[] },
   ): Promise<string | null>;
   npmVersion(pkg: string, date: string): Promise<string | null>;
+  pathExists?(repo: string, commit: string, path: string): Promise<boolean>;
 }
 
 const API_CACHE = path.join(CACHE, "backfill", "api-cache.json");
@@ -106,6 +107,23 @@ export const realSource: Source = {
         if (c && (!newest || c.when > newest.when)) newest = c;
       }
       return newest?.sha ?? null;
+    });
+  },
+
+  async pathExists(repo, commit, p) {
+    return cached(`exists|${repo}|${commit}|${p}`, true, async () => {
+      try {
+        await gh(
+          `repos/${repo}/contents/${p.split("/").map(encodeURIComponent).join("/")}?ref=${commit}`,
+          'if type == "array" then "dir" else .type end',
+        );
+        return true;
+      } catch (e) {
+        if (/HTTP 404|Not Found/i.test(String((e as Error).message))) {
+          return false;
+        }
+        throw e;
+      }
     });
   },
 

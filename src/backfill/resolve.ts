@@ -58,10 +58,32 @@ export const resolvePin = async (
         paths,
       });
       if (!commit) return null;
+      const have = { ...(provides as Record<string, string>) };
+      for (const [name, from] of Object.entries(part.fallback ?? {})) {
+        const sub = have[name];
+        if (!sub || !source.pathExists) continue;
+        if (await source.pathExists(part.git, commit, sub)) continue;
+        delete have[name];
+        if (typeof from === "string") {
+          const version = await source.npmVersion(from, date);
+          if (!version) return null;
+          parts.push({ npm: from, version, provides: name });
+        } else {
+          const old = await source.gitHead(from.git, date, {
+            branch: from.branch,
+          });
+          if (!old) return null;
+          parts.push({
+            git: from.git,
+            commit: old,
+            provides: { [name]: "." },
+          });
+        }
+      }
       parts.push({
         git: part.git,
         commit,
-        provides: provides as Record<string, string>,
+        provides: have,
         shared: part.shared,
       });
     } else {

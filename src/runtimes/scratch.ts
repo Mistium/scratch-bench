@@ -22,6 +22,12 @@ export const scratch = nodeVmRuntime("scratch", "Scratch", async () => ({
           storage: "packages/scratch-storage",
         },
         shared: ["packages/task-herder"],
+        fallback: {
+          storage: {
+            git: "scratchfoundation/scratch-storage",
+            branch: "develop",
+          },
+        },
       },
       { npm: "scratch-audio", provides: "audio" },
     ],

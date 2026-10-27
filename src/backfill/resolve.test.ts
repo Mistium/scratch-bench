@@ -46,6 +46,63 @@ const monorepo: Runtime = {
   },
 };
 
+describe("resolvePin fallback", () => {
+  const withFallback: Runtime = {
+    ...monorepo,
+    history: {
+      since: { performance: "2025-08-01", parity: "2025-08-01" },
+      parts: [{
+        git: "Org/editor",
+        provides: { vm: "packages/vm", storage: "packages/storage" },
+        fallback: { storage: "org-storage" },
+      }],
+    },
+  };
+  const has = (present: boolean): Source => ({
+    ...source,
+    pathExists: async () => present,
+  });
+  test("uses npm for a directory the commit doesn't have", async () => {
+    const pin = await resolvePin(withFallback, "parity", "2026-05-01", has(false), {
+      latest: false,
+    });
+    expect(pin?.parts).toEqual([
+      { npm: "org-storage", version: "1.0.05", provides: "storage" },
+      expect.objectContaining({ provides: { vm: "packages/vm" } }),
+    ]);
+  });
+  test("can fall back to the older standalone repo", async () => {
+    const rt: Runtime = {
+      ...withFallback,
+      history: {
+        ...withFallback.history!,
+        parts: [{
+          ...(withFallback.history!.parts![0] as object),
+          fallback: { storage: { git: "Org/storage", branch: "develop" } },
+        }] as never,
+      },
+    };
+    const pin = await resolvePin(rt, "parity", "2026-05-01", has(false), {
+      latest: false,
+    });
+    expect(pin?.parts[0]).toEqual({
+      git: "Org/storage",
+      commit: "torage@2026-05-01",
+      provides: { storage: "." },
+    });
+  });
+  test("keeps the directory when the commit has it", async () => {
+    const pin = await resolvePin(withFallback, "parity", "2026-05-01", has(true), {
+      latest: false,
+    });
+    expect(pin?.parts).toHaveLength(1);
+    expect((pin!.parts[0] as { provides: object }).provides).toEqual({
+      vm: "packages/vm",
+      storage: "packages/storage",
+    });
+  });
+});
+
 describe("resolvePin", () => {
   test("parity pins every part, performance only the vm", async () => {
     const parity = await resolvePin(fork, "parity", "2026-05-01", source, {
