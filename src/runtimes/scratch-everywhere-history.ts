@@ -4,7 +4,13 @@ import { CACHE } from "../paths.ts";
 import { checkout } from "../backfill/git.ts";
 import { realSource } from "../backfill/source.ts";
 import { run } from "../webbundle.ts";
-import type { HistoricLaunch, HistorySpec, Pin, SuiteId } from "./types.ts";
+import type {
+  HistoricLaunch,
+  HistorySpec,
+  Pin,
+  SuiteId,
+  Variant,
+} from "./types.ts";
 
 const REPO = "ScratchEverywhere/ScratchEverywhere";
 const WORKFLOW = "nightly-pc.yml";
@@ -114,12 +120,11 @@ const localHeadless = async (sha: string, dest: string): Promise<string> => {
   return kept;
 };
 
-const AUDIO_FIX = "99e3c7d4";
-const hasAudioFix = async (sha: string): Promise<boolean> => {
+const containsCommit = async (sha: string, base: string): Promise<boolean> => {
   try {
     const status = (await gh(
       "api",
-      `repos/${REPO}/compare/${AUDIO_FIX}...${sha}`,
+      `repos/${REPO}/compare/${base}...${sha}`,
       "--jq",
       ".status",
     )).trim();
@@ -128,6 +133,41 @@ const hasAudioFix = async (sha: string): Promise<boolean> => {
     return false;
   }
 };
+
+const hasAudioFix = (sha: string) => containsCommit(sha, "99e3c7d4");
+
+export const hasBytecodeVm = (sha: string) => containsCommit(sha, "4cb9003d");
+
+const settingsFile = (sb3: string) => `${sb3}.json`;
+const removeSettings = (sb3: string) =>
+  fs.rmSync(settingsFile(sb3), { force: true });
+
+export const vmVariants = (bytecode: boolean): Variant[] =>
+  bytecode
+    ? [
+      {
+        id: "bytecode",
+        name: "bytecode VM",
+        default: true,
+        prepare: removeSettings,
+      },
+      {
+        id: "interpreter",
+        name: "interpreter",
+        default: false,
+        prepare: (sb3) =>
+          fs.writeFileSync(
+            settingsFile(sb3),
+            JSON.stringify({ settings: { useBytecode: false } }),
+          ),
+      },
+    ]
+    : [{
+      id: "interpreter",
+      name: "interpreter",
+      default: true,
+      prepare: removeSettings,
+    }];
 
 const resolve = async (date: string): Promise<Pin | null> => {
   const sha = await realSource.gitHead(REPO, date, { branch: "main" });
@@ -182,5 +222,6 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
 
 export const scratchEverywhereHistory: HistorySpec = {
   since: { performance: "2026-10-04", parity: "2026-10-05" },
+  variants: async (pin) => vmVariants(await hasBytecodeVm(pin.custom!.sha!)),
   custom: { resolve: (date) => resolve(date), build },
 };

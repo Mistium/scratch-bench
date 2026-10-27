@@ -18,8 +18,11 @@ export const hostParam = (q: Record<string, unknown>) => {
 
 export const runtimeParam = (q: Record<string, unknown>, key: string) => {
   const v = one(q[key]);
-  return v && /^[a-z0-9-]{1,40}$/.test(v) ? v : undefined;
+  return v && /^[a-z0-9~-]{1,60}$/.test(v) ? v : undefined;
 };
+
+export const separateParam = (q: Record<string, unknown>): boolean =>
+  one(q.vm) === "1";
 
 export const weightsParam = (
   q: Record<string, unknown>,

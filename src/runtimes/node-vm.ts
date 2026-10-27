@@ -1,7 +1,7 @@
 import path from "node:path";
 import { ADAPTERS, ROOT } from "../paths.ts";
 import { ensureWebBundle, type WebPart, type WebRecipe } from "../webbundle.ts";
-import type { HistorySpec, Runtime } from "./types.ts";
+import type { HistorySpec, Runtime, Variant } from "./types.ts";
 
 export type NodeVmId =
   | "scratch"
@@ -14,8 +14,9 @@ export const nodeVmRuntime = (
   id: NodeVmId,
   name: string,
   describe: () => Promise<{ version: string; detail?: Record<string, string> }>,
-  { gui = true, web, history }: {
+  { gui = true, web, history, variants }: {
     gui?: boolean;
+    variants?: Variant[];
     web?: () => Promise<WebRecipe>;
     history?: HistorySpec;
   } = {},
@@ -26,7 +27,8 @@ export const nodeVmRuntime = (
     kind: "node",
     history,
     setup: async (opts) => {
-      const info = await describe();
+      const described = await describe();
+      const info = variants ? { ...described, variants } : described;
       if (web && opts.gui) await ensureWebBundle(await web());
       return info;
     },

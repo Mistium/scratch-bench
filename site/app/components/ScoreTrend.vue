@@ -24,7 +24,11 @@ const option = computed(() => {
     type: "line",
     showSymbol: false,
     connectNulls: false,
-    lineStyle: { width: 2, color: chart.runtimeColor(id, indexOf(id)) },
+    lineStyle: {
+      width: 2,
+      color: chart.runtimeColor(id, indexOf(id)),
+      type: chart.lineType(id),
+    },
     itemStyle: { color: chart.runtimeColor(id, indexOf(id)) },
     data: s!.timestamps.slice(first).map((t, i) => [t, v.total[first + i]]),
     markLine: n === 0 && revisions.length
@@ -43,7 +47,13 @@ const option = computed(() => {
   }));
   return chart.narrow({
     ...chart.base(),
-    grid: { left: 8, right: 16, top: 16, bottom: 56, containLabel: true },
+    grid: {
+      left: 8,
+      right: 16,
+      top: 16,
+      bottom: 56 + chart.legendExtra(series.length),
+      containLabel: true,
+    },
     tooltip: {
       ...chart.base().tooltip,
       trigger: "axis",

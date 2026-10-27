@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const { data: meta } = await useMetaData();
-const { host, baseline, weights } = useBenchState();
+const { host, baseline, weights, separate } = useBenchState();
 const { ordered } = useRuntimes(meta, baseline);
 
 const effectiveHost = computed(() =>
@@ -38,6 +38,12 @@ const effectiveHost = computed(() =>
           <option v-for="r in ordered" :key="r.id"
             :value="r.id">{{ r.name }}</option>
         </select>
+      </label>
+
+      <label v-if="meta?.hasVariants" class="field field--check"
+        title="Show runtimes that can run their VM in more than one way (compiler or interpreter, bytecode VM or interpreter) once per way. Off, each runtime is shown in the mode it uses by default.">
+        <input v-model="separate" type="checkbox" class="field__checkbox" />
+        <span class="field__label">Show VM modes separately</span>
       </label>
 
       <label class="field field--check">

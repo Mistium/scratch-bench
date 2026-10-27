@@ -1,7 +1,12 @@
 import { buildScores } from "../utils/queries.ts";
 import { loadDataset } from "../utils/results.ts";
 import { resultsDir } from "../utils/paths.ts";
-import { dateParam, hostParam, weightsParam } from "../utils/query.ts";
+import {
+  dateParam,
+  hostParam,
+  separateParam,
+  weightsParam,
+} from "../utils/query.ts";
 import { respond } from "../utils/respond.ts";
 
 export default defineEventHandler((event) => {
@@ -10,6 +15,7 @@ export default defineEventHandler((event) => {
   const args = {
     host: hostParam(q),
     weights: weightsParam(q),
+    separate: separateParam(q),
     from: dateParam(q, "from"),
     to: dateParam(q, "to", true),
   };

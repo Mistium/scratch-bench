@@ -1,3 +1,4 @@
+import { COMPILER_VARIANTS } from "../variants.ts";
 import { forkStack, gitPinnedVersion, nodeVmRuntime } from "./node-vm.ts";
 
 export const mistwarp = nodeVmRuntime(
@@ -12,7 +13,9 @@ export const mistwarp = nodeVmRuntime(
   },
   {
     web: async () => forkStack("mistwarp", { svg: true, storage: true }),
+    variants: COMPILER_VARIANTS,
     history: {
+      variants: COMPILER_VARIANTS,
       since: { performance: "2025-08-01", parity: "2025-08-01" },
       parts: [
         { git: "MistWarp/scratch-vm", provides: { vm: "." } },

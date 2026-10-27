@@ -42,16 +42,28 @@ const option = computed(() => {
       return {
         name: nameOf(id),
         type: "line",
+        symbol: "circle",
         symbolSize: 6,
-        connectNulls: false,
-        lineStyle: { width: 2, color },
+        showSymbol: true,
+        lineStyle: { width: 2, color, type: chart.lineType(id) },
         itemStyle: { color },
-        data: stamps.map((_, i) => point(i)),
+        data: stamps.map((_, i) => i).filter((i) => r.parity_total[first + i])
+          .map(point),
       };
     });
+  const ratios = series.flatMap((s) => s.data.map((d) => d.value[1] as number));
+  const floor = ratios.length
+    ? Math.max(0, Math.floor((Math.min(...ratios) - 0.02) * 20) / 20)
+    : 0;
   return chart.narrow({
     ...chart.base(),
-    grid: { left: 8, right: 16, top: 16, bottom: 56, containLabel: true },
+    grid: {
+      left: 8,
+      right: 16,
+      top: 16,
+      bottom: 56 + chart.legendExtra(series.length),
+      containLabel: true,
+    },
     tooltip: {
       ...chart.base().tooltip,
       trigger: "axis",
@@ -72,7 +84,7 @@ const option = computed(() => {
     xAxis: { type: "time", ...chart.axis() },
     yAxis: {
       type: "value",
-      min: 0,
+      min: floor,
       max: 1,
       ...chart.axis(),
       axisLabel: {

@@ -263,25 +263,32 @@ summary {
   }
 }
 
-[data-runtime="scratch"] {
+[data-runtime="scratch"],
+[data-runtime^="scratch~"] {
   --runtime-color: var(--runtime-scratch);
 }
-[data-runtime="turbowarp"] {
+[data-runtime="turbowarp"],
+[data-runtime^="turbowarp~"] {
   --runtime-color: var(--runtime-turbowarp);
 }
-[data-runtime="mistwarp"] {
+[data-runtime="mistwarp"],
+[data-runtime^="mistwarp~"] {
   --runtime-color: var(--runtime-mistwarp);
 }
-[data-runtime="nitrobolt"] {
+[data-runtime="nitrobolt"],
+[data-runtime^="nitrobolt~"] {
   --runtime-color: var(--runtime-nitrobolt);
 }
-[data-runtime="penguinmod"] {
+[data-runtime="penguinmod"],
+[data-runtime^="penguinmod~"] {
   --runtime-color: var(--runtime-penguinmod);
 }
-[data-runtime="scratch-everywhere"] {
+[data-runtime="scratch-everywhere"],
+[data-runtime^="scratch-everywhere~"] {
   --runtime-color: var(--runtime-scratch-everywhere);
 }
-[data-runtime="oscratchl"] {
+[data-runtime="oscratchl"],
+[data-runtime^="oscratchl~"] {
   --runtime-color: var(--runtime-oscratchl);
 }
 
@@ -293,6 +300,12 @@ summary {
   margin-right: 0.2em;
   border-radius: 50%;
   background: var(--runtime-color, var(--color-text-muted));
+}
+
+.runtime-dot[data-runtime*="~"] {
+  box-sizing: border-box;
+  border: 2px solid var(--runtime-color, var(--color-text-muted));
+  background: transparent;
 }
 
 .page {
@@ -665,6 +678,9 @@ summary {
 
 .chart-tooltip .runtime-dot {
   background: var(--runtime-color, var(--chart-muted));
+}
+.chart-tooltip .runtime-dot[data-runtime*="~"] {
+  background: transparent;
 }
 
 .table-scroll {

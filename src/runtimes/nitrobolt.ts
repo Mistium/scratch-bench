@@ -1,3 +1,4 @@
+import { COMPILER_VARIANTS } from "../variants.ts";
 import { forkStack, gitPinnedVersion, nodeVmRuntime } from "./node-vm.ts";
 
 export const nitrobolt = nodeVmRuntime(
@@ -12,7 +13,9 @@ export const nitrobolt = nodeVmRuntime(
   },
   {
     web: async () => forkStack("nitrobolt", { svg: true, storage: true }),
+    variants: COMPILER_VARIANTS,
     history: {
+      variants: COMPILER_VARIANTS,
       since: { performance: "2025-08-01", parity: "2025-08-01" },
       parts: [
         { git: "Nitro-Bolt/scratch-vm", provides: { vm: "." } },

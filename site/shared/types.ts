@@ -19,8 +19,16 @@ export interface HostInfo {
   last: string;
 }
 
+export interface VariantInfo {
+  id: string;
+  name: string;
+  default: boolean;
+}
+
 export interface RuntimeInfo {
   id: string;
+  base: string;
+  variant: VariantInfo | null;
   name: string;
   kind: string;
   version: string;
@@ -29,6 +37,7 @@ export interface RuntimeInfo {
 
 export interface Meta {
   runtimes: RuntimeInfo[];
+  hasVariants: boolean;
   hosts: HostInfo[];
   suites: string[];
   runCount: number;
@@ -47,6 +56,8 @@ export interface ParitySummary {
 
 export interface LatestRuntime {
   id: string;
+  base: string;
+  variant: VariantInfo | null;
   name: string;
   kind: string;
   version: string;

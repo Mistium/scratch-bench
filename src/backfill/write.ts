@@ -1,12 +1,11 @@
-// Writing backfilled results in the runner's own format. A real nightly result is never touched.
-
 import fs from "node:fs";
 import path from "node:path";
 import { hostInfo, repoInfo } from "../hostinfo.ts";
 import type { Measured } from "../measure-suite.ts";
 import { RESULTS_DIR } from "../paths.ts";
 import type { SuiteResult } from "../report.ts";
-import type { Pin, Runtime, SuiteId } from "../runtimes/types.ts";
+import type { Pin, Runtime, SuiteId, VariantInfo } from "../runtimes/types.ts";
+import { resultFileName } from "../variants.ts";
 import { timestampFor } from "./schedule.ts";
 
 export interface BackfillInfo {
@@ -14,12 +13,10 @@ export interface BackfillInfo {
   pin_hash: string;
   pin: Pin;
   measured_at: string;
-  /** The date whose run this result copies, when the pinned versions did not change between the two dates. */
   reused_from?: string;
   note?: string;
 }
 
-/** A short, human version for a pin: the VM's commit or version, or the custom version a custom resolver gave. */
 export const describePin = (
   pin: Pin,
 ): { version: string; detail: Record<string, string> } => {
@@ -53,6 +50,7 @@ export const writeResult = (a: {
   hash: string;
   suiteSourceHash: string;
   launcher: "headless" | "gui";
+  variant?: VariantInfo | null;
   measured: Measured | null;
   error?: string;
   reusedFrom?: string;
@@ -60,7 +58,10 @@ export const writeResult = (a: {
   resultsDir?: string;
 }): WriteOutcome => {
   const dir = dirFor(a.date, a.resultsDir);
-  const file = path.join(dir, `${a.suite}-${a.rt.id}.json`);
+  const file = path.join(
+    dir,
+    resultFileName(a.suite, a.rt.id, a.variant ?? null),
+  );
   const timestamp = timestampFor(a.date);
 
   if (fs.existsSync(file)) {
@@ -68,7 +69,7 @@ export const writeResult = (a: {
     try {
       existing = JSON.parse(fs.readFileSync(file, "utf8"));
     } catch {}
-    if (!existing?.backfill) return "kept-real"; // a real nightly result, or something we can't read: leave it alone
+    if (!existing?.backfill) return "kept-real";
     if (
       existing.backfill.pin_hash === a.hash && !!existing.error === !!a.error
     ) return "unchanged";
@@ -88,6 +89,7 @@ export const writeResult = (a: {
       detail,
       launcher: a.launcher,
       display: a.measured?.display ?? null,
+      variant: a.variant ?? null,
     },
     host: hostInfo(),
     runs: a.measured?.runs ??

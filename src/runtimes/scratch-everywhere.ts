@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { RUNTIME_DIR } from "../paths.ts";
-import { scratchEverywhereHistory } from "./scratch-everywhere-history.ts";
+import {
+  hasBytecodeVm,
+  scratchEverywhereHistory,
+  vmVariants,
+} from "./scratch-everywhere-history.ts";
 import type { Runtime, SetupInfo } from "./types.ts";
 
 const REPO = "ScratchEverywhere/ScratchEverywhere";
@@ -129,6 +133,7 @@ export const scratchEverywhere: Runtime = {
     return {
       version: `${build.sha.slice(0, 7)} (run ${build.id})`,
       detail: { sha: build.sha, run: build.id, built: build.date },
+      variants: vmVariants(await hasBytecodeVm(build.sha)),
     };
   },
   headless: {

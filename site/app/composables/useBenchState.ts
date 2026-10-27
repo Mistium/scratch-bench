@@ -6,6 +6,7 @@ export const useBenchState = () => ({
   host: useQueryState<string>("host", ""),
   baseline: useQueryState<string>("baseline", "scratch"),
   weights: useQueryState<"default" | "equal">("weights", "default"),
+  separate: useQueryState<boolean>("vm", false),
   mode: useQueryState<"absolute" | "relative">("mode", "absolute"),
   log: useQueryState<boolean>("log", true),
   hidden: useQueryState<string[]>("hide", []),

@@ -9,9 +9,16 @@ import { measureSuite } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
-import type { Runtime, SetupInfo } from "./runtimes/types.ts";
+import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
 import { summarize } from "./stats.ts";
 import { selectSuites, type Suite } from "./suites.ts";
+import {
+  infoOf,
+  labelOf,
+  resultFileName,
+  setupVariants,
+  variantsToRun,
+} from "./variants.ts";
 
 const USAGE = `usage: bun run bench [setup] [options]
 
@@ -22,6 +29,7 @@ const USAGE = `usage: bun run bench [setup] [options]
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --timeout S             seconds before a run is killed (default 300)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
+  --no-variants           run each runtime in its default VM mode only (not compiler and interpreter, bytecode and not)
   --offline               don't use the network; use cached runtime downloads
   --out DIR               results directory (default results/<timestamp>)
   --json                  print the results as JSON on stdout (progress goes to stderr)
@@ -37,6 +45,7 @@ const { values: opts, positionals } = parseArgs({
     timeout: { type: "string", default: "300" },
     display: { type: "string", default: "x11" },
     offline: { type: "boolean", default: false },
+    "no-variants": { type: "boolean", default: false },
     out: { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
@@ -114,19 +123,31 @@ const main = async (): Promise<number> => {
 
   for (const suite of suites) {
     for (const rt of runtimes) {
-      const result = await runSuite(
-        suite,
-        rt,
-        built.get(suite.id)!,
-        setups.get(rt.id)!,
-        timeoutMs,
-      );
-      const full: SuiteResult = { ...result, timestamp, host, repo };
-      results.push(full);
-      fs.writeFileSync(
-        path.join(outDir, `${suite.id}-${rt.id}.json`),
-        JSON.stringify(full, null, 2) + "\n",
-      );
+      const setup = setups.get(rt.id)!;
+      for (
+        const variant of variantsToRun(
+          setupVariants(setup),
+          !opts["no-variants"],
+        )
+      ) {
+        const result = await runSuite(
+          suite,
+          rt,
+          built.get(suite.id)!,
+          setup,
+          timeoutMs,
+          variant,
+        );
+        const full: SuiteResult = { ...result, timestamp, host, repo };
+        results.push(full);
+        fs.writeFileSync(
+          path.join(
+            outDir,
+            resultFileName(suite.id, rt.id, full.runtime.variant ?? null),
+          ),
+          JSON.stringify(full, null, 2) + "\n",
+        );
+      }
     }
   }
   fs.writeFileSync(
@@ -161,7 +182,9 @@ const runSuite = async (
   built: Built,
   setup: SetupInfo | Error,
   timeoutMs: number,
+  variant: Variant | null,
 ): Promise<Omit<SuiteResult, "timestamp" | "host" | "repo">> => {
+  const label = labelOf(rt.name, variant && infoOf(variant));
   const base = {
     schema_version: 1 as const,
     suite: { id: suite.id, source_hash: built.hash },
@@ -173,13 +196,14 @@ const runSuite = async (
       detail: setup instanceof Error ? {} : setup.detail ?? {},
       launcher: null as "headless" | "gui" | null,
       display: null as string | null,
+      variant: variant ? infoOf(variant) : null,
     },
     runs: [] as SuiteResult["runs"],
     stats: {} as SuiteResult["stats"],
     results: null as unknown,
   };
   const fail = (error: string) => {
-    log(`${suite.id} / ${rt.name}: ${error}`);
+    log(`${suite.id} / ${label}: ${error}`);
     return { ...base, error };
   };
   if (setup instanceof Error) {
@@ -196,7 +220,7 @@ const runSuite = async (
     const skipped = suite.launcher === "gui"
       ? "no rendered (gui) launcher for this runtime yet"
       : `no ${suite.launcher} launcher`;
-    log(`${suite.id} / ${rt.name}: skipped, ${skipped}`);
+    log(`${suite.id} / ${label}: skipped, ${skipped}`);
     return { ...base, skipped };
   }
   base.runtime.launcher = kind;
@@ -205,9 +229,10 @@ const runSuite = async (
     ? count(opts["parity-runs"], suite.runs)
     : count(opts.runs, suite.runs);
   log(
-    `${suite.id} / ${rt.name} (${kind}): ${total} run${total > 1 ? "s" : ""}`,
+    `${suite.id} / ${label} (${kind}): ${total} run${total > 1 ? "s" : ""}`,
   );
   const measured = await measureSuite(suite, launcher, built.sb3, {
+    variant,
     runs: total,
     timeoutMs,
     displayKind: opts.display as DisplayKind,

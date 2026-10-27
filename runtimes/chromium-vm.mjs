@@ -115,7 +115,12 @@ const server = http.createServer((req, res) => {
       else if (text === "[BENCH-IDLE]") resolve();
     });
   });
-  await page.evaluate(([k, s]) => window.start(k, s), [kind, scripts]);
+  const compiler = process.env.BENCH_COMPILER !== "0";
+  await page.evaluate(([k, s, c]) => window.start(k, s, c), [
+    kind,
+    scripts,
+    compiler,
+  ]);
   await finished;
   await browser.close();
   server.close();

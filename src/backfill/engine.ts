@@ -5,7 +5,9 @@ import type {
   Pin,
   Runtime,
   SuiteId,
+  Variant,
 } from "../runtimes/types.ts";
+import { infoOf } from "../variants.ts";
 import { type Suite, SUITES } from "../suites.ts";
 import { cleanup as cleanupBuild } from "./build.ts";
 import { pinHash, resolvePin } from "./resolve.ts";
@@ -34,7 +36,6 @@ export interface Deps {
     sb3: string,
     o: MeasureOptions,
   ): Promise<Measured>;
-  /** The current project, built from source: { sb3, hash }. */
   suiteBuild(suite: Suite): Promise<{ sb3: string; hash: string }>;
   cleanup?(hash: string, keep: "bundle" | "none"): void;
   resultsDir?: string;
@@ -43,12 +44,10 @@ export interface Deps {
 export interface Options {
   runtimes: Runtime[];
   suites: SuiteId[];
-  /** Ascending dates; the last one is "latest" (for runtimes whose newest version is the only one that works). */
   dates: string[];
   perfRuns: number;
   timeoutMs: number;
   displayKind: DisplayKind;
-  /** Stop after this many new builds+runs (for trying things out). */
   limit?: number;
   dryRun: boolean;
   retryFailed: boolean;
@@ -64,6 +63,21 @@ interface Entry {
   hash: string;
 }
 
+interface Unit {
+  pinHash: string;
+  variant: Variant | null;
+  hash: string;
+}
+
+const variantsOf = async (
+  rt: Runtime,
+  pin: Pin,
+): Promise<(Variant | null)[]> => {
+  const v = rt.history?.variants;
+  const list = typeof v === "function" ? await v(pin) : v;
+  return list?.length ? list : [null];
+};
+
 export interface Summary {
   resolved: number;
   unavailable: number;
@@ -78,7 +92,6 @@ export interface Summary {
 
 const byId = (id: SuiteId) => SUITES.find((s) => s.id === id)!;
 
-/** Run `fn` over items with at most `n` in flight. */
 const pool = async <T>(items: T[], n: number, fn: (x: T) => Promise<void>) => {
   let i = 0;
   await Promise.all(
@@ -104,7 +117,6 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
   const latest = o.dates.at(-1);
   const descending = [...o.dates].reverse();
 
-  /* ---- plan: what was each runtime on each date ---- */
   const entries: Entry[] = [];
   const suiteOrder: SuiteId[] = (["parity", "performance"] as const).filter((
     s,
@@ -140,27 +152,49 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
   }
   sum.distinct = distinct.size;
 
-  /* ---- what still has to be done ---- */
+  const units = new Map<string, Unit>();
+  const pinUnits = new Map<string, Unit[]>();
+  for (const [pinH, list] of distinct) {
+    const list2: Unit[] = [];
+    for (const v of await variantsOf(list[0]!.rt, list[0]!.pin)) {
+      const unit: Unit = {
+        pinHash: pinH,
+        variant: v,
+        hash: v ? `${pinH}~${v.id}` : pinH,
+      };
+      units.set(unit.hash, unit);
+      list2.push(unit);
+    }
+    pinUnits.set(pinH, list2);
+  }
+
   const done = (hash: string) => {
     const st = getState(hash);
     if (!st) return false;
     if (st.status === "ok") return loadMeasured(hash) !== null;
     return !o.retryFailed;
   };
-  let pending = [...distinct.keys()].filter((h) => !done(h));
-  sum.cached = distinct.size - pending.length;
+  let pending = [...units.values()].filter((u) => !done(u.hash));
+  sum.cached = units.size - pending.length;
   if (o.limit !== undefined) pending = pending.slice(0, o.limit);
+  const pendingPins = [...new Set(pending.map((u) => u.pinHash))];
+  const unitLabel = (u: Unit) => {
+    const e = distinct.get(u.pinHash)![0]!;
+    return `${e.suite} / ${e.rt.id} @ ${describePin(e.pin).version}${
+      u.variant ? ` (${u.variant.name})` : ""
+    }`;
+  };
 
   if (o.dryRun) {
     log(
-      `\nplan: ${entries.length} results over ${distinct.size} distinct versions; ${sum.cached} already done, ${pending.length} to do`,
+      `\nplan: ${entries.length} results over ${distinct.size} distinct versions in ${units.size} VM modes; ${sum.cached} already done, ${pending.length} to do`,
     );
-    for (const h of pending.slice(0, 15)) {
-      const e = distinct.get(h)![0]!;
+    for (const u of pending.slice(0, 15)) {
+      const e = distinct.get(u.pinHash)![0]!;
       log(
         `  ${e.suite.padEnd(11)} ${e.rt.id.padEnd(18)} ${
           describePin(e.pin).version.padEnd(10)
-        } first needed ${e.date}`,
+        } ${(u.variant?.name ?? "").padEnd(12)} first needed ${e.date}`,
       );
     }
     if (pending.length > 15) log(`  ... and ${pending.length - 15} more`);
@@ -172,11 +206,11 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
     suiteBuilds.set(s, await deps.suiteBuild(byId(s)));
   }
 
-  const writeHash = (hash: string) => {
-    const list = distinct.get(hash)!;
-    const st = getState(hash);
+  const writeUnit = (u: Unit) => {
+    const list = distinct.get(u.pinHash)!;
+    const st = getState(u.hash);
     if (!st) return;
-    const measured = st.status === "ok" ? loadMeasured(hash) : null;
+    const measured = st.status === "ok" ? loadMeasured(u.hash) : null;
     const chronological = [...list].sort((a, b) =>
       a.date.localeCompare(b.date)
     );
@@ -187,9 +221,10 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
         suite: e.suite,
         date: e.date,
         pin: e.pin,
-        hash,
+        hash: u.hash,
         suiteSourceHash: suiteBuild?.hash ?? "unknown",
         launcher: e.suite === "parity" ? "gui" : "headless",
+        variant: u.variant ? infoOf(u.variant) : null,
         measured,
         error: st.status === "failed"
           ? `${st.stage} failed: ${st.error}`
@@ -205,87 +240,96 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
     }
   };
 
-  /* ---- build everything pending (parallel), then run it one at a time on an otherwise idle machine ---- */
   const launches = new Map<string, HistoricLaunch>();
   let n = 0;
-  log(`\nbuilding ${pending.length} versions (${o.concurrency} at a time)`);
-  await pool(pending, o.concurrency, async (hash) => {
-    const e = distinct.get(hash)![0]!;
+  log(`\nbuilding ${pendingPins.length} versions (${o.concurrency} at a time)`);
+  await pool(pendingPins, o.concurrency, async (pinH) => {
+    const e = distinct.get(pinH)![0]!;
     const label = `${e.suite} / ${e.rt.id} @ ${describePin(e.pin).version}`;
-    if (o.retryFailed && getState(hash)?.status === "failed") forget(hash);
+    const mine = pending.filter((u) => u.pinHash === pinH);
+    for (const u of mine) {
+      if (o.retryFailed && getState(u.hash)?.status === "failed") {
+        forget(u.hash);
+      }
+    }
     try {
       launches.set(
-        hash,
+        pinH,
         await deps.build(
           e.rt,
           e.suite,
           e.pin,
-          hash,
+          pinH,
           (l) => log(`    [${label}] ${l}`),
         ),
       );
-      log(`  [${++n}/${pending.length}] built ${label}`);
+      log(`  [${++n}/${pendingPins.length}] built ${label}`);
       sum.built++;
     } catch (err) {
-      setState(hash, {
-        status: "failed",
-        stage: "build",
-        error: String((err as Error).message).split("\n").slice(0, 3).join(
-          " | ",
-        ).slice(0, 400),
-      });
-      log(
-        `  [${++n}/${pending.length}] BUILD FAILED ${label}: ${
-          getState(hash)!.error
-        }`,
-      );
-      sum.failed++;
-      writeHash(hash);
+      const error = String((err as Error).message).split("\n").slice(0, 3).join(
+        " | ",
+      ).slice(0, 400);
+      for (const u of mine) {
+        setState(u.hash, { status: "failed", stage: "build", error });
+        sum.failed++;
+        writeUnit(u);
+      }
+      log(`  [${++n}/${pendingPins.length}] BUILD FAILED ${label}: ${error}`);
     }
   });
 
-  const runnable = pending.filter((h) => launches.has(h));
+  const runnable = pending.filter((u) => launches.has(u.pinHash));
+  const remaining = new Map<string, number>();
+  for (const u of runnable) {
+    remaining.set(u.pinHash, (remaining.get(u.pinHash) ?? 0) + 1);
+  }
   log(`\nrunning ${runnable.length} versions, one at a time`);
   let r = 0;
-  for (const hash of runnable) {
-    const e = distinct.get(hash)![0]!;
+  for (const u of runnable) {
+    const e = distinct.get(u.pinHash)![0]!;
     const suite = byId(e.suite);
-    const label = `${e.suite} / ${e.rt.id} @ ${describePin(e.pin).version}`;
-    log(`  [${++r}/${runnable.length}] ${label}`);
+    const launch = launches.get(u.pinHash)!;
+    log(`  [${++r}/${runnable.length}] ${unitLabel(u)}`);
     const measured = await deps.measure(
       suite,
-      launches.get(hash)!,
+      launch,
       suiteBuilds.get(e.suite)!.sb3,
       {
         runs: e.suite === "parity" ? 1 : o.perfRuns,
         timeoutMs: o.timeoutMs,
         displayKind: o.displayKind,
+        variant: u.variant,
         log: (l) => log(`  ${l}`),
       },
     );
     const ok = measured.runs.some((x) => x.ok);
     if (ok) {
-      saveMeasured(hash, measured);
-      setState(hash, { status: "ok", note: launches.get(hash)!.note });
+      saveMeasured(u.hash, measured);
+      setState(u.hash, { status: "ok", note: launch.note });
       sum.ran++;
     } else {
-      setState(hash, {
+      setState(u.hash, {
         status: "failed",
         stage: "run",
         error: measured.runs.find((x) => x.error)?.error ?? "no run completed",
       });
       sum.failed++;
-      log(`    FAILED: ${getState(hash)!.error}`);
+      log(`    FAILED: ${getState(u.hash)!.error}`);
     }
-    (deps.cleanup ?? cleanupBuild)(
-      hash,
-      e.suite === "parity" ? "bundle" : "none",
-    );
-    writeHash(hash);
+    const left = (remaining.get(u.pinHash) ?? 1) - 1;
+    remaining.set(u.pinHash, left);
+    if (left === 0) {
+      (deps.cleanup ?? cleanupBuild)(
+        u.pinHash,
+        e.suite === "parity" ? "bundle" : "none",
+      );
+    }
+    writeUnit(u);
   }
 
-  for (const hash of distinct.keys()) {
-    if (!pending.includes(hash)) writeHash(hash);
+  const handled = new Set(pending.map((u) => u.hash));
+  for (const u of units.values()) {
+    if (!handled.has(u.hash)) writeUnit(u);
   }
   return sum;
 };

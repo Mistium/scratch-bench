@@ -101,7 +101,7 @@ export const startBenchRun = (
     );
   }
 
-  const timeoutMs = Number(process.env.BENCH_TIMEOUT_MIN ?? 90) * 60_000;
+  const timeoutMs = Number(process.env.BENCH_TIMEOUT_MIN ?? 180) * 60_000;
   const timer = setTimeout(() => {
     child.kill("SIGTERM");
     setTimeout(() => child.kill("SIGKILL"), 15_000).unref();

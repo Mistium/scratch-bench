@@ -1,3 +1,4 @@
+import { COMPILER_VARIANTS } from "../variants.ts";
 import { forkStack, gitPinnedVersion, nodeVmRuntime } from "./node-vm.ts";
 
 export const turbowarp = nodeVmRuntime(
@@ -12,7 +13,9 @@ export const turbowarp = nodeVmRuntime(
   },
   {
     web: async () => forkStack("turbowarp"),
+    variants: COMPILER_VARIANTS,
     history: {
+      variants: COMPILER_VARIANTS,
       since: { performance: "2025-08-01", parity: "2025-08-01" },
       parts: [
         { git: "TurboWarp/scratch-vm", provides: { vm: "." } },

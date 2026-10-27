@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { HostInfo, ParitySummary, Summary } from "../../shared/types.ts";
+import type {
+  HostInfo,
+  ParitySummary,
+  Summary,
+  VariantInfo,
+} from "../../shared/types.ts";
 
 export const SUPPORTED_SCHEMA = 1;
 
@@ -17,6 +22,8 @@ export interface Entry {
     version: string;
     launcher: string | null;
     display: string | null;
+    base: string;
+    variant: VariantInfo | null;
   };
   suiteHash: string;
   repoSha: string | null;
@@ -60,6 +67,15 @@ const toSummary = (x: unknown): Summary | null => {
   }
   return { n, median, mean, stddev, min, max };
 };
+
+const variantOf = (v: unknown): VariantInfo | null =>
+  isObject(v) && typeof v.id === "string" && v.id !== ""
+    ? {
+      id: v.id,
+      name: typeof v.name === "string" ? v.name : v.id,
+      default: v.default === true,
+    }
+    : null;
 
 export const hostIdOf = (host: Record<string, any>): string => {
   const key = [host.cpu, host.cores, host.memory_gb, host.os].map(String).join(
@@ -147,6 +163,8 @@ export const parseResult = (
         : "unknown",
       launcher: typeof runtime.launcher === "string" ? runtime.launcher : null,
       display: typeof runtime.display === "string" ? runtime.display : null,
+      base: runtime.id,
+      variant: variantOf(runtime.variant),
     },
     suiteHash: typeof suite.source_hash === "string" ? suite.source_hash : "",
     repoSha: isObject(repo) && typeof repo.sha === "string" ? repo.sha : null,

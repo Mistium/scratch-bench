@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { measureSuite } from "../measure-suite.ts";
-import type { Pin, Runtime } from "../runtimes/types.ts";
+import type { Pin, Runtime, Variant } from "../runtimes/types.ts";
 import { buildLaunch } from "./build.ts";
 import { backfill, type Deps, type Options } from "./engine.ts";
 import { resetState } from "./state.ts";
@@ -90,6 +90,133 @@ afterEach(() => {
   delete process.env.BENCH_BACKFILL_DIR;
   resetState();
   fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+const variantRuntime = (
+  id: string,
+  modern: (version: string) => boolean = () => true,
+): Runtime => {
+  const both: Variant[] = [
+    { id: "fast", name: "fast", default: true, env: { MODE: "fast" } },
+    { id: "slow", name: "slow", default: false, env: { MODE: "slow" } },
+  ];
+  const onlySlow: Variant[] = [{
+    id: "slow",
+    name: "slow",
+    default: true,
+    env: { MODE: "slow" },
+  }];
+  return {
+    id,
+    name: `Fake ${id}`,
+    kind: "native",
+    setup: async () => ({ version: "x" }),
+    history: {
+      since: { parity: "2026-10-02" },
+      variants: async (pin) => (modern(pin.custom!.version!) ? both : onlySlow),
+      custom: {
+        resolve: async (date): Promise<Pin | null> => ({
+          parts: [],
+          custom: { version: date < "2026-10-04" ? "v1" : "v2" },
+        }),
+        build: async () => ({
+          command: () => ({
+            cmd: [
+              "node",
+              "-e",
+              `const slow=process.env.MODE==="slow";console.log("[PROJECT] [PASSED] All Tests Were Successful: "+(slow?7:10)+"/10 (100%)")`,
+            ],
+          }),
+        }),
+      },
+    },
+  };
+};
+
+describe("VM modes", () => {
+  test("every mode is run, and written under its own file with the default keeping the plain name", async () => {
+    const sum = await backfill(options([variantRuntime("vm")]), deps());
+    expect(sum.distinct).toBe(2);
+    expect(sum.ran).toBe(4);
+    const fast = read("2026-10-04", "vm");
+    expect(fast.runtime.variant).toEqual({
+      id: "fast",
+      name: "fast",
+      default: true,
+    });
+    expect(fast.results.passed).toBe(10);
+    const slow = JSON.parse(
+      fs.readFileSync(
+        path.join(results, "2026-10-04T03-00-00-000Z", "parity-vm@slow.json"),
+        "utf8",
+      ),
+    );
+    expect(slow.runtime.variant).toEqual({
+      id: "slow",
+      name: "slow",
+      default: false,
+    });
+    expect(slow.results.passed).toBe(7);
+  });
+
+  test("a version from before a mode existed is run only in the modes it has", async () => {
+    const rt = variantRuntime("old", (v) => v === "v2");
+    const sum = await backfill(options([rt]), deps());
+    expect(sum.ran).toBe(3);
+    const old = read("2026-10-02", "old");
+    expect(old.runtime.variant).toEqual({
+      id: "slow",
+      name: "slow",
+      default: true,
+    });
+    expect(old.results.passed).toBe(7);
+    expect(
+      fs.existsSync(
+        path.join(results, "2026-10-02T03-00-00-000Z", "parity-old@slow.json"),
+      ),
+    ).toBe(false);
+    expect(read("2026-10-05", "old").runtime.variant.id).toBe("fast");
+  });
+
+  test("a second run does nothing, and a mode added later is the only thing run", async () => {
+    await backfill(
+      options([variantRuntime("grow", (v) => v === "v1")]),
+      deps(),
+    );
+    const sum = await backfill(options([variantRuntime("grow")]), deps());
+    expect(sum.ran).toBe(1);
+    expect(sum.built).toBe(1);
+    expect((await backfill(options([variantRuntime("grow")]), deps())).ran)
+      .toBe(0);
+  });
+
+  test("--retry-failed retries only the mode that failed", async () => {
+    const rt = variantRuntime("flaky");
+    let slowFails = true;
+    const base = rt.history!.custom!.build;
+    rt.history!.custom!.build = async (pin, suite) => {
+      const launch = await base(pin, suite);
+      return {
+        command: (
+          sb3,
+        ) => (slowFails
+          ? {
+            cmd: [
+              "node",
+              "-e",
+              'if(process.env.MODE==="slow")process.exit(3);console.log("[PROJECT] [PASSED] All Tests Were Successful: 10/10 (100%)")',
+            ],
+          }
+          : launch.command(sb3)),
+      };
+    };
+    const first = await backfill(options([rt]), deps());
+    expect(first.failed).toBe(2);
+    slowFails = false;
+    const retry = await backfill(options([rt], { retryFailed: true }), deps());
+    expect(retry.ran).toBe(2);
+    expect(read("2026-10-04", "flaky").results.passed).toBe(10);
+  });
 });
 
 describe("the backfill engine, with a runtime it has never heard of", () => {

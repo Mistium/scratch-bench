@@ -1,7 +1,8 @@
 import { type DisplayKind, startDisplay } from "./display.ts";
 import { runOnce, type RunResult } from "./measure.ts";
 import type { SuiteResult } from "./report.ts";
-import type { Command, Launcher } from "./runtimes/types.ts";
+import type { Command, Launcher, Variant } from "./runtimes/types.ts";
+import { withVariant } from "./variants.ts";
 import { summarize } from "./stats.ts";
 import type { Suite } from "./suites.ts";
 
@@ -9,6 +10,7 @@ export interface MeasureOptions {
   runs: number;
   timeoutMs: number;
   displayKind: DisplayKind;
+  variant?: Variant | null;
   log?: (line: string) => void;
 }
 
@@ -33,12 +35,13 @@ export const measureSuite = async (
   const runs: SuiteResult["runs"] = [];
   const datas: unknown[] = [];
   let displayName: string | null = null;
+  o.variant?.prepare?.(sb3);
 
   for (let i = 1; i <= o.runs; i++) {
     let run: RunResult;
     let display = null;
     try {
-      let command = launcher.command(sb3);
+      let command = withVariant(launcher.command(sb3), o.variant);
       if (launcher.display) {
         display = await startDisplay(o.displayKind);
         displayName = display.backend;

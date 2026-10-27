@@ -23,8 +23,43 @@ export const resolveHost = (ds: Dataset, requested?: string): string => {
   return ds.hosts[0]?.id ?? "";
 };
 
-const forHost = (ds: Dataset, host: string) =>
-  ds.entries.filter((e) => e.hostId === host);
+const views = new WeakMap<Dataset, { merged?: Entry[]; separate?: Entry[] }>();
+export const viewOf = (ds: Dataset, separate: boolean): Entry[] => {
+  const cache = views.get(ds) ?? {};
+  views.set(ds, cache);
+  const key = separate ? "separate" : "merged";
+  if (cache[key]) return cache[key];
+
+  let result: Entry[];
+  if (!separate) {
+    result = ds.entries.filter((e) =>
+      !e.runtime.variant || e.runtime.variant.default
+    );
+  } else {
+    const current = new Map<string, string>();
+    for (const e of ds.entries) {
+      if (e.runtime.variant?.default) {
+        current.set(e.runtime.base, e.runtime.variant.id);
+      }
+    }
+    result = ds.entries.map((e) => {
+      const v = e.runtime.variant;
+      if (!v) return e;
+      const id = current.get(e.runtime.base) === v.id
+        ? e.runtime.base
+        : `${e.runtime.base}~${v.id}`;
+      return {
+        ...e,
+        runtime: { ...e.runtime, id, name: `${e.runtime.name} (${v.name})` },
+      };
+    });
+  }
+  cache[key] = result;
+  return result;
+};
+
+const forHost = (ds: Dataset, host: string, separate = false) =>
+  viewOf(ds, separate).filter((e) => e.hostId === host);
 
 const hasPerformance = (e: Entry) =>
   e.suite === "performance" && e.runs.ok > 0 &&
@@ -41,11 +76,13 @@ const rsdOf = (
   s: Summary | null | undefined,
 ): number | null => (s && s.mean > 0 ? s.stddev / s.mean : null);
 
-export const buildMeta = (ds: Dataset): Meta => {
+export const buildMeta = (ds: Dataset, separate = false): Meta => {
   const latestByRuntime = new Map<string, Entry>();
-  for (const e of ds.entries) latestByRuntime.set(e.runtime.id, e);
+  for (const e of viewOf(ds, separate)) latestByRuntime.set(e.runtime.id, e);
   const runtimes: RuntimeInfo[] = [...latestByRuntime.values()].map((e) => ({
     id: e.runtime.id,
+    base: e.runtime.base,
+    variant: e.runtime.variant,
     name: e.runtime.name,
     kind: e.runtime.kind,
     version: e.runtime.version,
@@ -53,6 +90,7 @@ export const buildMeta = (ds: Dataset): Meta => {
   }));
   return {
     runtimes,
+    hasVariants: ds.entries.some((e) => e.runtime.variant !== null),
     hosts: ds.hosts,
     suites: [...new Set(ds.entries.map((e) => e.suite))].sort(),
     runCount: new Set(ds.entries.map((e) => e.runId)).size,
@@ -63,9 +101,13 @@ export const buildMeta = (ds: Dataset): Meta => {
   };
 };
 
-export const buildLatest = (ds: Dataset, hostArg?: string): Latest => {
+export const buildLatest = (
+  ds: Dataset,
+  hostArg?: string,
+  separate = false,
+): Latest => {
   const host = resolveHost(ds, hostArg);
-  const entries = forHost(ds, host);
+  const entries = forHost(ds, host, separate);
   const perf = entries.filter(hasPerformance);
   const par = entries.filter(hasParity);
   const latestPerf = perf.at(-1)?.timestamp ?? null;
@@ -77,6 +119,8 @@ export const buildLatest = (ds: Dataset, hostArg?: string): Latest => {
     const q = [...par].reverse().find((e) => e.runtime.id === id) ?? null;
     return {
       id,
+      base: p.runtime.base,
+      variant: p.runtime.variant,
       name: p.runtime.name,
       kind: p.runtime.kind,
       version: p.runtime.version,
@@ -109,11 +153,12 @@ export interface HistoryQuery {
   to?: string;
   bench?: string[];
   rsd?: boolean;
+  separate?: boolean;
 }
 
 export const buildHistory = (ds: Dataset, q: HistoryQuery = {}): History => {
   const host = resolveHost(ds, q.host);
-  const entries = forHost(ds, host).filter((e) =>
+  const entries = forHost(ds, host, q.separate).filter((e) =>
     hasPerformance(e) || hasParity(e)
   );
   const timestamps = [...new Set(entries.map((e) => e.timestamp))]
@@ -169,11 +214,17 @@ const mediansOf = (e: Entry): Medians => {
 
 export const buildScores = (
   ds: Dataset,
-  q: { host?: string; weights?: WeightMode; from?: string; to?: string } = {},
+  q: {
+    host?: string;
+    weights?: WeightMode;
+    from?: string;
+    to?: string;
+    separate?: boolean;
+  } = {},
 ): ScoreHistory => {
   const host = resolveHost(ds, q.host);
   const weights = q.weights ?? "default";
-  const perf = forHost(ds, host).filter(hasPerformance);
+  const perf = forHost(ds, host, q.separate).filter(hasPerformance);
   const timestamps = [...new Set(perf.map((e) => e.timestamp))]
     .filter((t) => (!q.from || t >= q.from) && (!q.to || t <= q.to))
     .sort();

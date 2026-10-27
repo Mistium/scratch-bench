@@ -54,7 +54,7 @@ const historicalOption = computed(() => {
       type: "line",
       showSymbol: false,
       connectNulls: false,
-      lineStyle: { width: 2, color },
+      lineStyle: { width: 2, color, type: chart.lineType(id) },
       itemStyle: { color },
       data: h.timestamps.map((t, i) => [t, y(id, i)]),
       markPoint: {
@@ -81,7 +81,13 @@ const historicalOption = computed(() => {
   });
   return chart.narrow({
     ...chart.base(),
-    grid: { left: 8, right: 16, top: 16, bottom: 64, containLabel: true },
+    grid: {
+      left: 8,
+      right: 16,
+      top: 16,
+      bottom: 64 + chart.legendExtra(series.length),
+      containLabel: true,
+    },
     legend: { ...chart.base().legend, bottom: 30 },
     tooltip: {
       ...chart.base().tooltip,

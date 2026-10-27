@@ -4,7 +4,9 @@ import {
   SCORE_VERSION,
   scoreRuntime,
 } from "../site/shared/scoring.ts";
+import type { VariantInfo } from "./runtimes/types.ts";
 import type { Summary } from "./stats.ts";
+import { labelOf } from "./variants.ts";
 
 export interface SuiteResult {
   schema_version: 1;
@@ -19,6 +21,7 @@ export interface SuiteResult {
     detail: Record<string, string>;
     launcher: "headless" | "gui" | null;
     display: string | null;
+    variant?: VariantInfo | null;
   };
   host: Record<string, unknown>;
   runs: {
@@ -75,7 +78,10 @@ export const renderReport = (results: SuiteResult[]): string => {
     out.push("Performance: median ops/ms over runs (relative stddev)\n");
     out.push(
       table(
-        ["benchmark", ...perf.map((r) => r.runtime.name)],
+        [
+          "benchmark",
+          ...perf.map((r) => labelOf(r.runtime.name, r.runtime.variant)),
+        ],
         ids.map((id) => [
           id,
           ...perf.map((r) => {
@@ -109,7 +115,7 @@ export const renderReport = (results: SuiteResult[]): string => {
       table(
         ["runtime", "overall", ...CATEGORY_IDS.map((c) => CATEGORIES[c].label)],
         scored.map(({ r, s }) => [
-          r.runtime.name,
+          labelOf(r.runtime.name, r.runtime.variant),
           x(s.total),
           ...CATEGORY_IDS.map((c) => x(s.categories[c].score)),
         ]),
@@ -136,7 +142,7 @@ export const renderReport = (results: SuiteResult[]): string => {
       ],
       results.filter((r) => !r.skipped).map((r) => [
         r.suite.id,
-        r.runtime.name,
+        labelOf(r.runtime.name, r.runtime.variant),
         r.runtime.launcher
           ? `${r.runtime.launcher}${
             r.runtime.display ? `/${r.runtime.display}` : ""
@@ -162,12 +168,16 @@ export const renderReport = (results: SuiteResult[]): string => {
         failed_groups: { name: string; passed: number; total: number }[];
       } | null;
       if (r.skipped) {
-        out.push(`${r.runtime.name}: skipped (${r.skipped})`);
+        out.push(
+          `${
+            labelOf(r.runtime.name, r.runtime.variant)
+          }: skipped (${r.skipped})`,
+        );
         continue;
       }
       if (!d) {
         out.push(
-          `${r.runtime.name}: no result (${
+          `${labelOf(r.runtime.name, r.runtime.variant)}: no result (${
             r.error ?? r.runs.find((x) => x.error)?.error ?? "unknown error"
           })`,
         );
@@ -176,7 +186,11 @@ export const renderReport = (results: SuiteResult[]): string => {
       const pct = d.total
         ? ` (${((d.passed! / d.total) * 100).toFixed(1)}%)`
         : "";
-      out.push(`${r.runtime.name}: ${d.verdict} ${d.passed}/${d.total}${pct}`);
+      out.push(
+        `${
+          labelOf(r.runtime.name, r.runtime.variant)
+        }: ${d.verdict} ${d.passed}/${d.total}${pct}`,
+      );
       for (const g of d.failed_groups) {
         out.push(`  ${g.name}: ${g.passed}/${g.total}`);
       }
@@ -190,11 +204,19 @@ export const renderReport = (results: SuiteResult[]): string => {
   if (failed.length) {
     out.push("Failures\n");
     for (const r of failed) {
-      if (r.error) out.push(`${r.suite.id} / ${r.runtime.name}: ${r.error}`);
+      if (r.error) {
+        out.push(
+          `${r.suite.id} / ${
+            labelOf(r.runtime.name, r.runtime.variant)
+          }: ${r.error}`,
+        );
+      }
       r.runs.forEach((x, i) => {
         if (!x.ok) {
           out.push(
-            `${r.suite.id} / ${r.runtime.name} run ${i + 1}: ${x.error}`,
+            `${r.suite.id} / ${
+              labelOf(r.runtime.name, r.runtime.variant)
+            } run ${i + 1}: ${x.error}`,
           );
         }
       });

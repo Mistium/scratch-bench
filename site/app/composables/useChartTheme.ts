@@ -26,12 +26,21 @@ export const useChartTheme = () => {
   };
 
   const runtimeColor = (id: string, index = 0): string =>
-    css(`--runtime-${id}`) ||
+    css(`--runtime-${id.split("~")[0]}`) ||
     css(`--chart-${(index % 8) + 1}`, FALLBACK[index % 8]);
+
+  const legendExtra = (entries: number): number =>
+    Math.max(0, Math.ceil(entries / 5) - 1) * 22;
+
+  const lineType = (
+    id: string,
+  ): "solid" | "dashed" => (id.includes("~") ? "dashed" : "solid");
 
   return {
     css,
     runtimeColor,
+    lineType,
+    legendExtra,
     text: () => css("--chart-text", "#15181d"),
     muted: () => css("--chart-muted", "#5b6472"),
     grid: () => css("--chart-grid", "#e3e6eb"),

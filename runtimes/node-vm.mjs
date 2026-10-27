@@ -51,7 +51,10 @@ fs.readFileSync = readFileSync;
 
 const vm = new VirtualMachine();
 if (VMS[vmName].compiler && typeof vm.setCompilerOptions === "function") {
-  vm.setCompilerOptions({ enabled: true, warpTimer: false });
+  vm.setCompilerOptions({
+    enabled: process.env.BENCH_COMPILER !== "0",
+    warpTimer: false,
+  });
 }
 
 vm.loadProject(fs.readFileSync(file)).then(() => {

@@ -10,9 +10,20 @@ export interface Launcher {
   display?: boolean;
 }
 
+export interface Variant {
+  id: string;
+  name: string;
+  default: boolean;
+  env?: Record<string, string>;
+  prepare?(sb3: string): void;
+}
+
+export type VariantInfo = Pick<Variant, "id" | "name" | "default">;
+
 export interface SetupInfo {
   version: string;
   detail?: Record<string, string>;
+  variants?: Variant[];
 }
 
 export interface SetupOptions {
@@ -59,6 +70,7 @@ export interface HistoricLaunch {
 export interface HistorySpec {
   since: Partial<Record<SuiteId, string>>;
   latestOnly?: SuiteId[];
+  variants?: Variant[] | ((pin: Pin) => Promise<Variant[]>);
   parts?: HistoryPart[];
   custom?: {
     resolve(date: string, suite: SuiteId): Promise<Pin | null>;
