@@ -15,6 +15,7 @@ const ROOT_DIR = path.join(RUNTIME_DIR, "oscratchl");
 const NAME = "oscratchl";
 
 let binary: string | undefined;
+let runtimeSource: string | undefined;
 
 const git = async (dir: string, ...args: string[]): Promise<string> => {
   const proc = Bun.spawn(["git", "-C", dir, ...args], {
@@ -60,6 +61,7 @@ export const oscratchl: Runtime = {
   async setup({ offline }): Promise<SetupInfo> {
     if (process.env.OSCRATCHL_BINARY) {
       binary = path.resolve(process.env.OSCRATCHL_BINARY);
+      runtimeSource = undefined;
       if (!fs.existsSync(binary)) {
         throw new Error(`OSCRATCHL_BINARY ${binary} does not exist`);
       }
@@ -69,6 +71,7 @@ export const oscratchl: Runtime = {
     const { dir, own } = await source(offline);
     const commit = await git(dir, "rev-parse", "HEAD");
     binary = own ? path.join(dir, NAME) : path.join(ROOT_DIR, "bin", NAME);
+    runtimeSource = path.join(dir, "src");
     const stamp = `${binary}.commit`;
     const built = !fs.existsSync(binary)
       ? null
@@ -110,6 +113,11 @@ export const oscratchl: Runtime = {
       },
     };
   },
-  headless: { command: (sb3) => headlessCommand(binary!, sb3) },
-  gui: { display: true, command: (sb3) => windowCommand(binary!, sb3) },
+  headless: {
+    command: (sb3) => headlessCommand(binary!, sb3, runtimeSource),
+  },
+  gui: {
+    display: true,
+    command: (sb3) => windowCommand(binary!, sb3, runtimeSource),
+  },
 };

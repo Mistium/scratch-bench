@@ -84,7 +84,9 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
   const sha = pin.custom!.sha!;
   const out = path.join(dir(), sha);
   const bin = path.join(out, "oscratchl");
-  if (!fs.existsSync(bin)) {
+  // The runtime source stays beside the binary: `--compile` needs it to build each project.
+  const runtimeSource = path.join(out, "src", "src");
+  if (!fs.existsSync(bin) || !fs.existsSync(runtimeSource)) {
     const mirrorDir = await mirror();
     const src = path.join(out, "src");
     fs.rmSync(out, { recursive: true, force: true });
@@ -100,15 +102,14 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
         recursive: true,
       });
     }
-    fs.rmSync(src, { recursive: true, force: true });
   }
   return {
     display: suite === "parity",
     command: (
       sb3,
     ) => (suite === "parity"
-      ? windowCommand(bin, sb3)
-      : headlessCommand(bin, sb3)),
+      ? windowCommand(bin, sb3, runtimeSource)
+      : headlessCommand(bin, sb3, runtimeSource)),
   };
 };
 
