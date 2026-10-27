@@ -113,6 +113,6 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
 };
 
 export const oscratchlHistory: HistorySpec = {
-  since: { performance: "2026-09-26", parity: "2026-09-26" },
+  since: { performance: "2026-10-25", parity: "2026-10-25" },
   custom: { resolve: (date) => resolve(date), build },
 };

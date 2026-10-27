@@ -111,6 +111,7 @@ const server = http.createServer((req, res) => {
   const finished = new Promise((resolve) => {
     page.on("console", (m) => {
       const text = m.text();
+      if (process.env.BENCH_DEBUG) process.stderr.write(`console: ${text}\n`);
       if (text.startsWith("[PROJECT] ")) process.stdout.write(`${text}\n`);
       else if (text === "[BENCH-IDLE]") resolve();
     });

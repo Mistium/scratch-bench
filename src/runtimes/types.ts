@@ -38,7 +38,7 @@ export interface GitPart {
   branch?: string;
   provides: Record<string, string>;
   shared?: string[];
-  fallback?: Record<string, string>;
+  fallback?: Record<string, string | { git: string; branch?: string }>;
 }
 
 export interface NpmPart {

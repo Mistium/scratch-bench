@@ -82,9 +82,36 @@ const stage = async (dep: string, spec: string) => {
   return dir;
 };
 
+const pinGitDeps = (dir: string) => {
+  const lockFile = path.join(dir, "package-lock.json");
+  const pkgFile = path.join(dir, "package.json");
+  if (!fs.existsSync(lockFile)) return;
+  const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
+  for (const field of ["dependencies", "devDependencies"]) {
+    for (const [name, spec] of Object.entries<string>(pkg[field] ?? {})) {
+      if (!/^(github:|git\+|git:|[\w.-]+\/[\w.-]+(#|$))/.test(spec)) continue;
+      const entry = lock.packages?.[`node_modules/${name}`] ??
+        lock.dependencies?.[name];
+      const m = String(entry?.resolved ?? entry?.version ?? "").match(
+        /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?#([0-9a-f]{40})$/,
+      );
+      if (m) pkg[field][name] = `github:${m[1]}#${m[2]}`;
+    }
+  }
+  fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
+  fs.rmSync(lockFile);
+};
+
 export const install = async (dir: string) => {
   if (fs.existsSync(path.join(dir, "node_modules/.bench-installed"))) return;
-  await run(["bun", "install", "--ignore-scripts"], dir);
+  try {
+    await run(["bun", "install", "--ignore-scripts"], dir);
+  } catch (e) {
+    if (!/Integrity check failed/.test((e as Error).message)) throw e;
+    pinGitDeps(dir);
+    await run(["bun", "install", "--ignore-scripts"], dir);
+  }
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
 };
 
@@ -105,28 +132,59 @@ module.exports = (...args) => {
 };
 `;
 
+const patchBlocksPath = (dir: string) => {
+  const file = path.join(dir, "webpack.config.js");
+  const text = fs.readFileSync(file, "utf8");
+  const fixed = text.replaceAll(
+    "scratch-blocks/dist/vertical.js",
+    "scratch-blocks/shim/vertical.js",
+  );
+  if (fixed === text) return false;
+  fs.writeFileSync(file, fixed);
+  return true;
+};
+
 export const webpack = async (
   dir: string,
-): Promise<"production" | "development" | "transpiled"> => {
+): Promise<"production" | "development" | "patched"> => {
   const cmd = ["node", "node_modules/webpack-cli/bin/cli.js", "--bail"];
   const legacy = { NODE_OPTIONS: "--openssl-legacy-provider" };
-  try {
-    await run(cmd, dir, { ...legacy, NODE_ENV: "production" });
-    return "production";
-  } catch {
+  const attempt = async (extra: string[]) => {
     try {
-      await run(cmd, dir, { ...legacy, NODE_ENV: "development" });
-      return "development";
+      await run([...cmd, ...extra], dir, { ...legacy, NODE_ENV: "production" });
+      return "production" as const;
+    } catch {
+      await run([...cmd, ...extra], dir, {
+        ...legacy,
+        NODE_ENV: "development",
+      });
+      return "development" as const;
+    }
+  };
+  const fixups: Array<[RegExp, () => string[] | null]> = [
+    [
+      /Cannot find module 'scratch-blocks\/dist\/vertical\.js'/,
+      () => patchBlocksPath(dir) ? [] : null,
+    ],
+    [/Module parse failed/, () => {
+      fs.writeFileSync(path.join(dir, WRAPPER), wrapperConfig);
+      return ["--config", WRAPPER];
+    }],
+  ];
+  let extra: string[] = [];
+  let patched = false;
+  for (let tries = 0; ; tries++) {
+    try {
+      const mode = await attempt(extra);
+      return patched ? "patched" : mode;
     } catch (e) {
-      if (!/Module parse failed/.test((e as Error).message)) throw e;
+      const fix = fixups.find(([re]) => re.test((e as Error).message));
+      const next = fix && tries < fixups.length ? fix[1]() : null;
+      if (!next) throw e;
+      if (next.length) extra = next;
+      patched = true;
     }
   }
-  fs.writeFileSync(path.join(dir, WRAPPER), wrapperConfig);
-  await run([...cmd, "--config", WRAPPER], dir, {
-    ...legacy,
-    NODE_ENV: "production",
-  });
-  return "transpiled";
 };
 
 const buildPart = async (

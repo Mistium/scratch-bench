@@ -82,7 +82,25 @@ const fromArtifact = async (
   return bin;
 };
 
-const localHeadless = async (sha: string, dest: string): Promise<string> => {
+const LOCAL_FLAGS = {
+  headless: [
+    "-DSE_RENDERER=headless",
+    "-DSE_WINDOWING=headless",
+    "-DSE_AUDIO_ENGINE=headless",
+    "-DSE_AUDIO=OFF",
+  ],
+  gui: [
+    "-DSE_RENDERER=sdl2",
+    "-DSE_WINDOWING=sdl2",
+    "-DSE_AUDIO_ENGINE=sdl2",
+  ],
+} as const;
+
+const localBuild = async (
+  sha: string,
+  dest: string,
+  kind: keyof typeof LOCAL_FLAGS,
+): Promise<string> => {
   const src = path.join(dest, "src");
   const build = path.join(dest, "build");
   await checkout(REPO, sha, src);
@@ -93,10 +111,7 @@ const localHeadless = async (sha: string, dest: string): Promise<string> => {
     "-B",
     build,
     "-DCMAKE_BUILD_TYPE=Release",
-    "-DSE_RENDERER=headless",
-    "-DSE_WINDOWING=headless",
-    "-DSE_AUDIO_ENGINE=headless",
-    "-DSE_AUDIO=OFF",
+    ...LOCAL_FLAGS[kind],
   ], dest);
   await run([
     "cmake",
@@ -184,10 +199,22 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
   } catch {}
 
   if (suite === "parity") {
-    if (!runId) throw new Error(`no nightly CI run for ${sha.slice(0, 7)}`);
-    const bin = await fromArtifact(runId, "gui", path.join(dir, "gui"));
+    let bin: string;
+    let note: string | undefined;
+    try {
+      if (!runId) throw new Error("no CI run");
+      bin = await fromArtifact(runId, "gui", path.join(dir, "gui"));
+    } catch {
+      bin = path.join(dir, "local-gui", "scratch-pc");
+      if (!fs.existsSync(bin)) {
+        await localBuild(sha, path.join(dir, "local-gui"), "gui");
+      }
+      note =
+        "local_build: built from source with the CI SDL2 flags; CI had no usable artifact";
+    }
     return {
       display: true,
+      note,
       command: (sb3) => ({ cmd: [bin, sb3], cwd: path.dirname(bin) }),
     };
   }
@@ -203,7 +230,7 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
   } catch {
     bin = path.join(dir, "local-v2", "scratch-pc");
     if (!fs.existsSync(bin)) {
-      await localHeadless(sha, path.join(dir, "local-v2"));
+      await localBuild(sha, path.join(dir, "local-v2"), "headless");
     }
     note =
       "local_build: built from source with the CI headless flags; CI had no usable artifact";
