@@ -129,8 +129,9 @@ const containsCommit = async (sha: string, base: string): Promise<boolean> => {
       ".status",
     )).trim();
     return status === "ahead" || status === "identical";
-  } catch {
-    return false;
+  } catch (e) {
+    if (/HTTP 404|Not Found/i.test(String((e as Error).message))) return false;
+    throw e;
   }
 };
 

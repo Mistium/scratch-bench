@@ -120,6 +120,7 @@ const main = async () => {
     },
   );
   log(`\n${JSON.stringify(summary)}`);
+  if (summary.errors > 0) return 1;
   return summary.failed > 0 ? FINISHED_WITH_FAILURES : 0;
 };
 

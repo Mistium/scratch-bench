@@ -88,6 +88,7 @@ export interface Summary {
   cached: number;
   written: number;
   keptReal: number;
+  errors: number;
 }
 
 const byId = (id: SuiteId) => SUITES.find((s) => s.id === id)!;
@@ -113,6 +114,7 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
     cached: 0,
     written: 0,
     keptReal: 0,
+    errors: 0,
   };
   const latest = o.dates.at(-1);
   const descending = [...o.dates].reverse();
@@ -125,16 +127,32 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
     for (const rt of o.runtimes) {
       if (!rt.history?.since[suite]) continue;
       const found: Entry[] = [];
-      await pool(descending, 6, async (date) => {
-        const pin = await resolvePin(rt, suite, date, deps.source, {
-          latest: date === latest,
+      try {
+        await pool(descending, 6, async (date) => {
+          const pin = await resolvePin(rt, suite, date, deps.source, {
+            latest: date === latest,
+          });
+          if (!pin) {
+            sum.unavailable++;
+            return;
+          }
+          found.push({
+            rt,
+            suite,
+            date,
+            pin,
+            hash: pinHash(rt.id, suite, pin),
+          });
         });
-        if (!pin) {
-          sum.unavailable++;
-          return;
-        }
-        found.push({ rt, suite, date, pin, hash: pinHash(rt.id, suite, pin) });
-      });
+      } catch (e) {
+        sum.errors++;
+        log(
+          `could not plan ${suite} / ${rt.name}, skipping it: ${
+            String((e as Error).message).split("\n")[0]!.slice(0, 300)
+          }`,
+        );
+        continue;
+      }
       found.sort((a, b) => b.date.localeCompare(a.date));
       entries.push(...found);
       sum.resolved += found.length;
@@ -156,7 +174,21 @@ export const backfill = async (o: Options, deps: Deps): Promise<Summary> => {
   const pinUnits = new Map<string, Unit[]>();
   for (const [pinH, list] of distinct) {
     const list2: Unit[] = [];
-    for (const v of await variantsOf(list[0]!.rt, list[0]!.pin)) {
+    let variants: (Variant | null)[];
+    try {
+      variants = await variantsOf(list[0]!.rt, list[0]!.pin);
+    } catch (e) {
+      sum.errors++;
+      log(
+        `could not tell which VM modes ${list[0]!.rt.name} has at ${
+          describePin(list[0]!.pin).version
+        }, skipping it: ${
+          String((e as Error).message).split("\n")[0]!.slice(0, 200)
+        }`,
+      );
+      continue;
+    }
+    for (const v of variants) {
       const unit: Unit = {
         pinHash: pinH,
         variant: v,

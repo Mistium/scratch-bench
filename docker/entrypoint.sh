@@ -6,7 +6,7 @@ case "${1:-serve}" in
   serve)
     bun docker/init.ts &
     INIT=$!
-    node site/.output/server/index.mjs &
+    NODE_ENV=production node site/.output/server/index.mjs &
     SERVER=$!
     trap 'kill -TERM "$INIT" "$SERVER" 2>/dev/null || true' TERM INT
     status=0

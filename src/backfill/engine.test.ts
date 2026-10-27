@@ -349,6 +349,20 @@ describe("the backfill engine, with a runtime it has never heard of", () => {
     expect(read("2026-10-02", "fake")).toBeNull();
   });
 
+  test("a runtime whose lookups fail is skipped and reported, and the others are still done", async () => {
+    const broken = fakeRuntime("broken");
+    broken.history!.custom!.resolve = async () => {
+      throw new Error("HTTP 403: the organization forbids this token");
+    };
+    const lines: string[] = [];
+    const sum = await backfill(options([broken, fakeRuntime("fine")], { log: (l) => lines.push(l) }), deps());
+    expect(sum.errors).toBe(1);
+    expect(sum.ran).toBe(2); // the healthy runtime's two versions
+    expect(read("2026-10-04", "fine")).not.toBeNull();
+    expect(read("2026-10-04", "broken")).toBeNull();
+    expect(lines.join("\n")).toMatch(/could not plan parity \/ Fake broken, skipping it: HTTP 403/);
+  });
+
   test("a runtime without a history spec is ignored", async () => {
     const plain: Runtime = {
       id: "plain",

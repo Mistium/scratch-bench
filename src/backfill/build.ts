@@ -26,11 +26,9 @@ const isGitPin = (p: PinPart): p is Extract<PinPart, { git: string }> =>
 const isGitSpec = (p: HistoryPart): p is GitPart => "git" in p;
 const isNpmSpec = (p: HistoryPart): p is NpmPart => "npm" in p;
 
-/** The spec's part for a pinned repo, which knows every directory the build needs (not only the ones the pin names). */
 const specFor = (rt: Runtime, repo: string): GitPart | undefined =>
   rt.history?.parts?.filter(isGitSpec).find((p) => p.git === repo);
 
-/** Every directory to check out: the pinned parts, the shared packages, and the spec's other packages, which may be dependencies. */
 const pinDirs = (
   rt: Runtime,
   p: Extract<PinPart, { git: string }>,
@@ -44,7 +42,6 @@ const pinDirs = (
   ];
 };
 
-/** Check out a pinned repo and, for a monorepo, install and build its workspaces. Returns the checkout and each package dir. */
 const prepareRepo = async (
   rt: Runtime,
   p: Extract<PinPart, { git: string }>,
@@ -78,7 +75,9 @@ const prepareRepo = async (
     const needed = new Set([...Object.values(p.provides), ...(p.shared ?? [])]);
     for (const w of pkg.workspaces as string[]) {
       log(`building ${w}`);
-      await run(["bun", "run", "build"], path.join(work, w)).catch((e) => {
+      await run(["bun", "run", "build"], path.join(work, w), {
+        NODE_ENV: "development",
+      }).catch((e) => {
         if (
           /script not found|Script not found|no "build"/i.test(String(e))
         ) return;
@@ -97,7 +96,6 @@ const prepareRepo = async (
   };
 };
 
-/** An npm package's browser build: its shipped dist/web, or esbuild from source (scratch-audio). */
 const npmPartBundle = async (
   p: Extract<PinPart, { npm: string }>,
   out: string,
@@ -122,7 +120,6 @@ const npmPartBundle = async (
   }
 };
 
-/** Parity: a folder of browser bundles plus a manifest, in the shape chromium-vm.mjs already reads. */
 const buildBundle = async (
   rt: Runtime,
   pin: Pin,
@@ -188,7 +185,6 @@ const buildBundle = async (
   return bundle;
 };
 
-/** Performance: a directory the Node adapter can require() as the scratch-vm. */
 const buildVmDir = async (
   rt: Runtime,
   pin: Pin,
@@ -226,14 +222,12 @@ const buildVmDir = async (
   return path.join(tmp, "node_modules", part.npm);
 };
 
-/** Free the disk a finished pin used (checkouts and node_modules), keeping only what a run still needs. */
 export const cleanup = (hash: string, keep: "bundle" | "none") => {
   const base = buildPath(hash);
   if (keep === "none") fs.rmSync(base, { recursive: true, force: true });
   else fs.rmSync(path.join(base, "work"), { recursive: true, force: true });
 };
 
-/** Build (or reuse) what is needed to run a pin, and return how to launch it. */
 export const buildLaunch = async (
   rt: Runtime,
   suite: SuiteId,

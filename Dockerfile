@@ -47,7 +47,7 @@ RUN cd site && BENCH_CRON="$BENCH_CRON" bun run build
 ARG BENCH_REPO_SHA=
 ARG BENCH_PARITY_SHA=
 ENV BENCH_REPO_SHA=$BENCH_REPO_SHA BENCH_PARITY_SHA=$BENCH_PARITY_SHA \
-    NODE_ENV=production PORT=3000 HOST=0.0.0.0
+    PORT=3000 HOST=0.0.0.0
 EXPOSE 3000
 VOLUME ["/app/results", "/app/.cache"]
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
