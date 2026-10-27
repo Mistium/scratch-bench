@@ -41,7 +41,14 @@ export const run = async (
     new Response(proc.stderr).text(),
   ]);
   if ((await proc.exited) !== 0) {
-    const tail = (err || out).trim().split("\n").slice(-8).join("\n");
+    const noise =
+      /browserslist|update-browserslist-db|update-db#readme|DeprecationWarning|trace-deprecation/i;
+    const lines = `${err}\n${out}`.split("\n").filter((l) =>
+      l.trim() && !noise.test(l)
+    );
+    const first = lines.findIndex((l) => /ERROR in|Error:/.test(l));
+    const tail = (first >= 0 ? lines.slice(first) : lines.slice(-8)).slice(0, 8)
+      .join("\n");
     throw new Error(`${cmd.join(" ")} failed in ${cwd}:\n${tail}`);
   }
 };
@@ -81,18 +88,45 @@ export const install = async (dir: string) => {
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
 };
 
+const TRANSPILED = ["rotur-sdk"];
+const WRAPPER = "bench.webpack.config.cjs";
+const wrapperConfig = `const load = require("./webpack.config.js");
+const rule = {
+  test: /\\.m?js$/,
+  type: "javascript/auto",
+  loader: "babel-loader",
+  include: /[\\\\/]node_modules[\\\\/](${TRANSPILED.join("|")})[\\\\/]/,
+  options: { babelrc: false, configFile: false, presets: [["@babel/preset-env"]] },
+};
+const patch = (c) => ({ ...c, module: { ...c.module, rules: [rule, ...(c.module?.rules ?? [])] } });
+module.exports = (...args) => {
+  const c = typeof load === "function" ? load(...args) : load;
+  return Array.isArray(c) ? c.map(patch) : patch(c);
+};
+`;
+
 export const webpack = async (
   dir: string,
-): Promise<"production" | "development"> => {
+): Promise<"production" | "development" | "transpiled"> => {
   const cmd = ["node", "node_modules/webpack-cli/bin/cli.js", "--bail"];
   const legacy = { NODE_OPTIONS: "--openssl-legacy-provider" };
   try {
     await run(cmd, dir, { ...legacy, NODE_ENV: "production" });
     return "production";
   } catch {
-    await run(cmd, dir, { ...legacy, NODE_ENV: "development" });
-    return "development";
+    try {
+      await run(cmd, dir, { ...legacy, NODE_ENV: "development" });
+      return "development";
+    } catch (e) {
+      if (!/Module parse failed/.test((e as Error).message)) throw e;
+    }
   }
+  fs.writeFileSync(path.join(dir, WRAPPER), wrapperConfig);
+  await run([...cmd, "--config", WRAPPER], dir, {
+    ...legacy,
+    NODE_ENV: "production",
+  });
+  return "transpiled";
 };
 
 const buildPart = async (
