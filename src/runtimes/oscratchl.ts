@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { RUNTIME_DIR } from "../paths.ts";
+import { COMPILER_VARIANTS } from "../variants.ts";
 import { run } from "../webbundle.ts";
 import {
   compile,
@@ -65,7 +66,7 @@ export const oscratchl: Runtime = {
       if (!fs.existsSync(binary)) {
         throw new Error(`OSCRATCHL_BINARY ${binary} does not exist`);
       }
-      return { version: "custom", detail: { binary } };
+      return { version: "custom", detail: { binary }, variants: COMPILER_VARIANTS };
     }
 
     const { dir, own } = await source(offline);
@@ -103,6 +104,7 @@ export const oscratchl: Runtime = {
       Number(await git(dir, "log", "-1", "--format=%ct", "HEAD")) * 1000;
     return {
       version: commit.slice(0, 7),
+      variants: COMPILER_VARIANTS,
       detail: {
         commit,
         repo: REPO,
@@ -114,10 +116,10 @@ export const oscratchl: Runtime = {
     };
   },
   headless: {
-    command: (sb3) => headlessCommand(binary!, sb3, runtimeSource),
+    command: (sb3, v) => headlessCommand(binary!, sb3, runtimeSource, v),
   },
   gui: {
     display: true,
-    command: (sb3) => windowCommand(binary!, sb3, runtimeSource),
+    command: (sb3, v) => windowCommand(binary!, sb3, runtimeSource, v),
   },
 };

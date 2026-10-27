@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CACHE } from "../paths.ts";
+import { COMPILER_VARIANTS } from "../variants.ts";
 import { run } from "../webbundle.ts";
 import { endOfDay } from "../backfill/schedule.ts";
 import {
@@ -107,13 +108,15 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
     display: suite === "parity",
     command: (
       sb3,
+      v,
     ) => (suite === "parity"
-      ? windowCommand(bin, sb3, runtimeSource)
-      : headlessCommand(bin, sb3, runtimeSource)),
+      ? windowCommand(bin, sb3, runtimeSource, v)
+      : headlessCommand(bin, sb3, runtimeSource, v)),
   };
 };
 
 export const oscratchlHistory: HistorySpec = {
+  variants: COMPILER_VARIANTS,
   since: { performance: "2026-10-25", parity: "2026-10-25" },
   custom: { resolve: (date) => resolve(date), build },
 };

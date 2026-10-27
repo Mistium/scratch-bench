@@ -5,6 +5,7 @@ import path from "node:path";
 import { runOnce } from "../measure.ts";
 import { oscratchlHistory } from "./oscratchl-history.ts";
 import type { Suite } from "../suites.ts";
+import type { Variant } from "./types.ts";
 
 let tmp: string;
 let project: string;
@@ -118,6 +119,22 @@ describe("oscratchl history", () => {
         "utf8",
       ),
     ).toBe("font");
+  });
+
+  test("the compiler mode runs the --compile executable and the interpreter mode runs the project directly", async () => {
+    const [compilerMode, interpreterMode] = oscratchlHistory.variants as Variant[];
+    const pin = (await resolve("2026-10-20", "performance"))!;
+    const launch = await oscratchlHistory.custom!.build(pin, "performance");
+    const compiledCmd = launch.command(project, compilerMode).cmd;
+    const interpretedCmd = launch.command(project, interpreterMode).cmd;
+    expect(path.basename(compiledCmd[0]!)).toStartWith("compiled-");
+    expect(compiledCmd).not.toContain(project);
+    expect(path.basename(interpretedCmd[0]!)).toBe("oscratchl");
+    expect(interpretedCmd[1]).toBe(project);
+    for (const cmd of [compiledCmd, interpretedCmd]) {
+      const r = await runOnce({ ...launch.command(project), cmd }, suite, 20_000);
+      expect(r.lines[0]).toContain("10/10");
+    }
   });
 
   test("a compiler that fails gives an error that says what to set", async () => {

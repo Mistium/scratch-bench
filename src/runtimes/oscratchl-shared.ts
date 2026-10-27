@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { run } from "../webbundle.ts";
-import type { Command } from "./types.ts";
+import type { Command, Variant } from "./types.ts";
 
 export const REPO = "https://git.rotur.dev/Mist/oscratchl.git";
 
@@ -54,12 +54,22 @@ const compiled = (bin: string, sb3: string, runtimeSource?: string): string => {
   return out;
 };
 
+/** The compiler mode runs the `--compile` executable; the interpreter mode runs the project with oscratchl itself. */
+const program = (
+  bin: string,
+  sb3: string,
+  runtimeSource: string | undefined,
+  variant: Variant | null | undefined,
+): string[] =>
+  variant?.id === "interpreter" ? [bin, sb3] : [compiled(bin, sb3, runtimeSource)];
+
 export const headlessCommand = (
   bin: string,
   sb3: string,
   runtimeSource?: string,
+  variant?: Variant | null,
 ): Command => ({
-  cmd: [compiled(bin, sb3, runtimeSource), "--headless", HEADLESS_FRAMES],
+  cmd: [...program(bin, sb3, runtimeSource, variant), "--headless", HEADLESS_FRAMES],
   cwd: path.dirname(bin),
   projectLine: PROJECT_LINE,
 });
@@ -68,8 +78,9 @@ export const windowCommand = (
   bin: string,
   sb3: string,
   runtimeSource?: string,
+  variant?: Variant | null,
 ): Command => ({
-  cmd: [compiled(bin, sb3, runtimeSource), "--mute"],
+  cmd: [...program(bin, sb3, runtimeSource, variant), "--mute"],
   cwd: path.dirname(bin),
   projectLine: PROJECT_LINE,
 });
