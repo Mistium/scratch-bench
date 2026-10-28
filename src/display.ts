@@ -32,12 +32,16 @@ const need = (bin: string, pkg: string) => {
   }
 };
 
+// Per-process cursor so displays started concurrently in one process never pick the same number.
+let nextDisplay = 100 + (process.pid % 800);
+
 const startXvfb = async (): Promise<Display> => {
   need("Xvfb", "xorg-server-xvfb");
-  let n = 100 + (process.pid % 800);
+  let n = nextDisplay;
   while (
     fs.existsSync(`/tmp/.X11-unix/X${n}`) || fs.existsSync(`/tmp/.X${n}-lock`)
   ) n++;
+  nextDisplay = n + 1;
   const proc = Bun.spawn([
     "Xvfb",
     `:${n}`,

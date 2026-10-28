@@ -14,6 +14,8 @@ export interface ParityData {
   passed: number | null;
   total: number | null;
   failed_groups: { name: string; passed: number; total: number }[];
+  /** The run stopped before the summary; passed/total count only the groups that reported. */
+  incomplete?: boolean;
 }
 
 export interface Suite<T = unknown> {
@@ -23,6 +25,8 @@ export interface Suite<T = unknown> {
   runs: number;
   isDone(line: string): boolean;
   parse(lines: string[]): T;
+  /** For a run that stopped early (e.g. timed out): what its output still tells us, or undefined if nothing. */
+  partial?(lines: string[]): T | undefined;
 }
 
 const PERF_LINE =
@@ -83,6 +87,21 @@ export const parity: Suite<ParityData> = {
       }
     }
     return data;
+  },
+  partial(lines) {
+    const data = parity.parse(lines);
+    if (data.verdict !== "unknown") return data;
+    // No summary line: add up the groups that did report.
+    let passed = 0;
+    let total = 0;
+    for (const line of lines) {
+      const g = /^\[(PASSED|FAILED)\] (.+?): (\d+)\/(\d+) /.exec(line);
+      if (g && !/Tests Were/.test(g[2]!)) {
+        passed += Number(g[3]);
+        total += Number(g[4]);
+      }
+    }
+    return total ? { ...data, verdict: "failed", passed, total, incomplete: true } : undefined;
   },
 };
 

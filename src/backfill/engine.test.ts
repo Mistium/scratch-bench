@@ -6,6 +6,7 @@ import { measureSuite } from "../measure-suite.ts";
 import type { Pin, Runtime, Variant } from "../runtimes/types.ts";
 import { buildLaunch } from "./build.ts";
 import { backfill, type Deps, type Options } from "./engine.ts";
+import type { WorkerProgress } from "../progress.ts";
 import { resetState } from "./state.ts";
 import type { Source } from "./source.ts";
 
@@ -70,7 +71,6 @@ const options = (
   displayKind: "x11",
   dryRun: false,
   retryFailed: false,
-  concurrency: 2,
   log: () => {},
   ...extra,
 });
@@ -132,6 +132,164 @@ const variantRuntime = (
     },
   };
 };
+
+describe("parallel parity", () => {
+  test("parity versions run at the same time, and performance only runs alone after them", async () => {
+    const active = { parity: 0, performance: 0 };
+    const peak = { parity: 0, performance: 0 };
+    let perfOverlappedParity = false;
+    const measure: Deps["measure"] = async (suite, ...rest) => {
+      const id = suite.id as "parity" | "performance";
+      if (id === "performance" && active.parity > 0) perfOverlappedParity = true;
+      active[id]++;
+      peak[id] = Math.max(peak[id], active[id]);
+      await Bun.sleep(50);
+      try {
+        return await measureSuite(suite, ...rest);
+      } finally {
+        active[id]--;
+      }
+    };
+    await backfill(
+      options([fakeRuntime("par")], {
+        suites: ["parity", "performance"],
+        parityJobs: 4,
+      }),
+      { ...deps(), measure },
+    );
+    expect(peak.parity).toBe(2);
+    expect(peak.performance).toBeLessThanOrEqual(1);
+    expect(perfOverlappedParity).toBe(false);
+  });
+});
+
+describe("disk use", () => {
+  test("each version is built, run and deleted before the next, failed builds included", async () => {
+    let live = 0;
+    let peak = 0;
+    const built: string[] = [];
+    const cleaned: string[] = [];
+    await backfill(
+      options([fakeRuntime("disk", { failVersion: "v1" }), fakeRuntime("disk2")], {
+        parityJobs: 1,
+      }),
+      {
+        ...deps(),
+        build: async (...args) => {
+          built.push(args[3]);
+          peak = Math.max(peak, ++live);
+          return buildLaunch(...args);
+        },
+        cleanup: (hash) => {
+          cleaned.push(hash);
+          live--;
+        },
+      },
+    );
+    expect(built.length).toBe(4);
+    expect(peak).toBe(1);
+    expect(cleaned.sort()).toEqual(built.sort());
+  });
+});
+
+describe("build ahead", () => {
+  test("the next version builds while one is measured, with at most ahead + 1 builds on disk", async () => {
+    let live = 0;
+    let peakLive = 0;
+    let measuring = 0;
+    let building = 0;
+    let builtWhileMeasuring = false;
+    let overlappingRuns = false;
+    await backfill(
+      options(["ba1", "ba2", "ba3"].map((id) => {
+        const rt = fakeRuntime(id);
+        return { ...rt, history: { ...rt.history!, since: { performance: "2026-10-02" } } };
+      }), {
+        suites: ["performance"],
+        buildAhead: 1,
+      }),
+      {
+        ...deps(),
+        build: async (...args) => {
+          peakLive = Math.max(peakLive, ++live);
+          building++;
+          await Bun.sleep(60);
+          building--;
+          return buildLaunch(...args);
+        },
+        measure: async (...args) => {
+          if (building) builtWhileMeasuring = true;
+          if (measuring) overlappingRuns = true;
+          measuring++;
+          await Bun.sleep(30);
+          try {
+            return await measureSuite(...args);
+          } finally {
+            measuring--;
+          }
+        },
+        cleanup: () => {
+          live--;
+        },
+      },
+    );
+    expect(builtWhileMeasuring).toBe(true);
+    expect(peakLive).toBeLessThanOrEqual(2);
+    expect(overlappingRuns).toBe(false);
+  });
+});
+
+describe("parallel performance", () => {
+  test("each worker measures on its own CPU slot, and a slot never runs two versions at once", async () => {
+    const busy = new Set<string>();
+    let clash = false;
+    let peak = 0;
+    const used = new Set<string>();
+    const snapshots: WorkerProgress[][] = [];
+    await backfill(
+      options(["pp1", "pp2", "pp3"].map((id) => {
+        const rt = fakeRuntime(id);
+        return { ...rt, history: { ...rt.history!, since: { performance: "2026-10-02" } } };
+      }), {
+        suites: ["performance"],
+        jobs: 2,
+        buildAhead: 1,
+        measureCpus: ["0,6", "1,7"],
+        progress: (p) => {
+          if (p.workers) snapshots.push(p.workers);
+        },
+      }),
+      {
+        ...deps(),
+        measure: async (suite, launch, sb3, mo) => {
+          const cpus = mo.cpus!;
+          if (busy.has(cpus)) clash = true;
+          busy.add(cpus);
+          used.add(cpus);
+          peak = Math.max(peak, busy.size);
+          await Bun.sleep(40);
+          try {
+            return await measureSuite(suite, launch, sb3, mo);
+          } finally {
+            busy.delete(cpus);
+          }
+        },
+      },
+    );
+    expect(clash).toBe(false);
+    expect(peak).toBe(2);
+    expect([...used].sort()).toEqual(["0,6", "1,7"]);
+    // The progress file names every worker while it runs, with its cores, and nobody once everything is done.
+    const both = snapshots.find((w) =>
+      w.filter((x) => x.state === "running").length === 2
+    )!;
+    expect(both.map((x) => `${x.id}@${x.cpus}`).sort()).toEqual([
+      "performance 1@0,6",
+      "performance 2@1,7",
+    ]);
+    expect(snapshots.at(-1)).toEqual([]);
+  });
+});
 
 describe("VM modes", () => {
   test("every mode is run, and written under its own file with the default keeping the plain name", async () => {
@@ -216,6 +374,21 @@ describe("VM modes", () => {
     const retry = await backfill(options([rt], { retryFailed: true }), deps());
     expect(retry.ran).toBe(2);
     expect(read("2026-10-04", "flaky").results.passed).toBe(10);
+  });
+});
+
+describe("redo", () => {
+  test("measures versions that already have results again and replaces their files", async () => {
+    const rt = fakeRuntime("fake");
+    expect((await backfill(options([rt]), deps())).ran).toBe(2);
+    const before = read("2026-10-02", "fake");
+    const again = await backfill(options([rt]), deps());
+    expect(again.ran).toBe(0);
+    const redo = await backfill(options([rt], { redo: true }), deps());
+    expect(redo.ran).toBe(2);
+    const after = read("2026-10-02", "fake");
+    expect(after.backfill.pin_hash).toBe(before.backfill.pin_hash);
+    expect(after.runs).not.toBe(undefined);
   });
 });
 
@@ -372,5 +545,76 @@ describe("the backfill engine, with a runtime it has never heard of", () => {
     };
     const sum = await backfill(options([plain]), deps());
     expect(sum.distinct).toBe(0);
+  });
+});
+
+describe("build fallback", () => {
+  test("a commit that does not build is replaced by the newest older one that does, stopping at the previous date's", async () => {
+    const history = ["c5", "c4", "c3", "c2", "c1"];
+    const rt: Runtime = {
+      id: "fb",
+      name: "Fake fb",
+      kind: "native",
+      setup: async () => ({ version: "x" }),
+      history: {
+        since: { parity: "2026-10-02" },
+        fallback: 10,
+        parts: [{ git: "o/vm", provides: { vm: "." } }],
+      },
+    };
+    const built: string[] = [];
+    const d: Deps = {
+      ...deps(),
+      source: {
+        ...source,
+        gitHead: async (_r, date) => (date < "2026-10-04" ? "c1" : "c5"),
+        gitAncestors: async (_r, commit, n) =>
+          history.slice(history.indexOf(commit) + 1, history.indexOf(commit) + 1 + n),
+      },
+      build: async (_rt, _s, pin) => {
+        const c = (pin.parts[0] as { commit: string }).commit;
+        built.push(c);
+        if (c !== "c3" && c !== "c1") throw new Error(`cannot build ${c}`);
+        return {
+          command: () => ({
+            cmd: ["node", "-e", 'console.log("[PROJECT] [PASSED] All Tests Were Successful: 10/10 (100%)")'],
+          }),
+        };
+      },
+    };
+    await backfill(options([rt]), d);
+    expect(built.sort()).toEqual(["c1", "c3", "c4", "c5"]);
+    const r = read("2026-10-05", "fb");
+    expect(r.error).toBeUndefined();
+    expect(r.runtime.version).toBe("c3");
+    expect(r.backfill.pin.parts[0].commit).toBe("c3");
+    expect(r.backfill.note).toContain("c5 did not build; measured c3");
+    expect(read("2026-10-03", "fb").runtime.version).toBe("c1");
+
+    // Bounded: with c3 broken too, it stops before c1 (the previous date's commit) and records a failure.
+    fs.rmSync(path.join(tmp, "state"), { recursive: true, force: true });
+    fs.rmSync(results, { recursive: true, force: true });
+    resetState();
+    built.length = 0;
+    history.splice(2, 1); // drop c3: c5 -> c4 -> c2 -> c1
+    const d2: Deps = {
+      ...d,
+      build: async (rt2, s, pin, h, l) => {
+        const c = (pin.parts[0] as { commit: string }).commit;
+        if (c === "c2") {
+          built.push(c);
+          throw new Error("cannot build c2");
+        }
+        return d.build(rt2, s, pin, h, l);
+      },
+    };
+    await backfill(options([rt]), d2);
+    expect(built.filter((c) => c !== "c1").sort()).toEqual(["c2", "c4", "c5"]);
+    expect(read("2026-10-05", "fb").error).toContain("cannot build c5");
+
+    // Remembered: retrying rebuilds the planned commit but not the older ones already known not to build.
+    built.length = 0;
+    await backfill(options([rt], { retryFailed: true }), d2);
+    expect(built).toEqual(["c5"]);
   });
 });

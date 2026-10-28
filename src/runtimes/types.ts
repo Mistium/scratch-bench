@@ -34,7 +34,13 @@ export interface SetupOptions {
 
 export type SuiteId = "performance" | "parity";
 
-export interface GitPart {
+/** Inclusive dates (YYYY-MM-DD) a part applies to, for a package that moved repos. */
+interface PartWindow {
+  since?: string;
+  until?: string;
+}
+
+export interface GitPart extends PartWindow {
   git: string;
   branch?: string;
   provides: Record<string, string>;
@@ -42,7 +48,7 @@ export interface GitPart {
   fallback?: Record<string, string | { git: string; branch?: string }>;
 }
 
-export interface NpmPart {
+export interface NpmPart extends PartWindow {
   npm: string;
   provides: string;
 }
@@ -68,6 +74,8 @@ export interface HistoricLaunch {
   command(sb3: string, variant?: Variant | null): Command;
   display?: boolean;
   note?: string;
+  /** Overrides the run timeout, for a runtime known to be slow at this suite. */
+  timeoutMs?: number;
 }
 
 export interface HistorySpec {
@@ -75,6 +83,8 @@ export interface HistorySpec {
   latestOnly?: SuiteId[];
   variants?: Variant[] | ((pin: Pin) => Promise<Variant[]>);
   parts?: HistoryPart[];
+  /** When a version does not build, try up to this many older commits of its vm repo (never back to the previous date's), and measure the first that builds. */
+  fallback?: number;
   custom?: {
     resolve(date: string, suite: SuiteId): Promise<Pin | null>;
     build(pin: Pin, suite: SuiteId): Promise<HistoricLaunch>;
@@ -89,4 +99,6 @@ export interface Runtime {
   headless?: Launcher;
   gui?: Launcher;
   history?: HistorySpec;
+  /** Report results as this runtime instead (its VM modes become extra modes of that runtime). */
+  resultsAs?: { id: string; name: string };
 }

@@ -16,8 +16,9 @@ export const penguinmod = nodeVmRuntime(
     variants: COMPILER_VARIANTS,
     history: {
       variants: COMPILER_VARIANTS,
-      since: { performance: "2025-08-01", parity: "2026-10-26" },
-      latestOnly: ["parity"],
+      fallback: 5,
+      // A fork's git history includes the code it was forked from, so start when the fork's repo was created.
+      since: { performance: "2022-10-18", parity: "2022-10-18" },
       parts: [
         { git: "PenguinMod/PenguinMod-Vm", provides: { vm: "." } },
         { git: "PenguinMod/PenguinMod-Render", provides: { render: "." } },

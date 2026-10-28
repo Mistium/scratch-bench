@@ -16,7 +16,8 @@ export const turbowarp = nodeVmRuntime(
     variants: COMPILER_VARIANTS,
     history: {
       variants: COMPILER_VARIANTS,
-      since: { performance: "2025-08-01", parity: "2025-08-01" },
+      // TurboWarp forked scratch-vm on 2020-06-08 ("What if we compiled the blocks?").
+      since: { performance: "2020-06-08", parity: "2020-06-08" },
       parts: [
         { git: "TurboWarp/scratch-vm", provides: { vm: "." } },
         { git: "TurboWarp/scratch-render", provides: { render: "." } },

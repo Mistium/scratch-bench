@@ -11,7 +11,7 @@ import type {
   Runtime,
   SuiteId,
 } from "../runtimes/types.ts";
-import { buildDirPart, install, run, SCRIPTS } from "../webbundle.ts";
+import { buildDirPart, install, fixLockfiles, pinToDate, pinToLockfile, run, SCRIPTS } from "../webbundle.ts";
 import { checkout, sparseDirs } from "./git.ts";
 
 export const BUILDS = path.join(CACHE, "backfill", "builds");
@@ -26,19 +26,21 @@ const isGitPin = (p: PinPart): p is Extract<PinPart, { git: string }> =>
 const isGitSpec = (p: HistoryPart): p is GitPart => "git" in p;
 const isNpmSpec = (p: HistoryPart): p is NpmPart => "npm" in p;
 
-const specFor = (rt: Runtime, repo: string): GitPart | undefined =>
-  rt.history?.parts?.filter(isGitSpec).find((p) => p.git === repo);
+/** The spec's parts for a pinned repo, which know every directory the build needs (not only the ones the pin names). */
+const specsFor = (rt: Runtime, repo: string): GitPart[] =>
+  rt.history?.parts?.filter(isGitSpec).filter((p) => p.git === repo) ?? [];
 
 const pinDirs = (
   rt: Runtime,
   p: Extract<PinPart, { git: string }>,
 ): string[] => {
-  const spec = specFor(rt, p.git);
   return [
     ...Object.values(p.provides),
     ...(p.shared ?? []),
-    ...Object.values(spec?.provides ?? {}),
-    ...(spec?.shared ?? []),
+    ...specsFor(rt, p.git).flatMap((s) => [
+      ...Object.values(s.provides),
+      ...(s.shared ?? []),
+    ]),
   ];
 };
 
@@ -61,39 +63,55 @@ const prepareRepo = async (
   const workspace = sparse.length > 0;
   if (workspace) {
     const pkgFile = path.join(work, "package.json");
-    if (!fs.existsSync(pkgFile)) {
-      throw new Error(
-        `${p.git}@${
-          p.commit.slice(0, 7)
-        } has no root package.json (an incomplete commit), so it cannot be built`,
-      );
-    }
-    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
-    const keep = new Set(sparse);
-    pkg.workspaces = (Array.isArray(pkg.workspaces)
-      ? pkg.workspaces
-      : pkg.workspaces?.packages ?? []).filter((w: string) =>
-        keep.has(w)
-      );
+    // A monorepo's imported history has its packages at their new paths but no workspace root yet, so make one
+    // listing the packages that commit has.
+    const pkg = fs.existsSync(pkgFile)
+      ? JSON.parse(fs.readFileSync(pkgFile, "utf8"))
+      : {
+        name: "bench-workspace",
+        private: true,
+        workspaces: sparse.filter((d) => fs.existsSync(path.join(work, d, "package.json"))),
+      };
+    // Keep only the checked-out packages; the root may list them by name or by a glob such as "packages/*".
+    const listed: string[] = Array.isArray(pkg.workspaces) ? pkg.workspaces : pkg.workspaces?.packages ?? [];
+    pkg.workspaces = sparse.filter((d) =>
+      fs.existsSync(path.join(work, d, "package.json")) &&
+      listed.some((w) => w === d || (w.endsWith("/*") && path.dirname(d) === w.slice(0, -2)))
+    );
     delete pkg.scripts?.prepare;
     fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
     log("installing the workspace");
-    await run(["bun", "install", "--ignore-scripts"], work);
+    await install(work);
     const needed = new Set([...Object.values(p.provides), ...(p.shared ?? [])]);
-    for (const w of pkg.workspaces as string[]) {
-      log(`building ${w}`);
-      await run(["bun", "run", "build"], path.join(work, w), {
+    // Packages build against each other's output (scratch-vm needs scratch-render's dist), so build in passes: a
+    // package that fails is tried again once another has built, until a pass builds nothing new.
+    const build = (w: string) =>
+      // Older packages build with webpack 4, which needs the legacy OpenSSL provider; newer ones ignore it.
+      run(["bun", "run", "build"], path.join(work, w), {
+        NODE_OPTIONS: "--openssl-legacy-provider",
         NODE_ENV: "development",
-      }).catch((e) => {
-        if (
-          /script not found|Script not found|no "build"/i.test(String(e))
-        ) return;
-        if (fs.existsSync(path.join(work, w, "dist"))) {
-          return log(`${w} built with errors; using its output`);
-        }
-        if (needed.has(w)) throw e;
-        log(`${w} did not build; not needed for this suite`);
-      });
+      })
+        .then(() => null, (e) => (/script not found|Script not found|no "build"/i.test(String(e)) ? null : e));
+    let pending = pkg.workspaces as string[];
+    const errors = new Map<string, unknown>();
+    while (pending.length) {
+      const failed: string[] = [];
+      for (const w of pending) {
+        log(`building ${w}`);
+        const e = await build(w);
+        if (e) {
+          failed.push(w);
+          errors.set(w, e);
+        } else errors.delete(w);
+      }
+      if (failed.length === pending.length) break;
+      pending = failed;
+    }
+    for (const [w, e] of errors) {
+      if (fs.existsSync(path.join(work, w, "dist"))) {
+        log(`${w} built with errors; using its output`);
+      } else if (needed.has(w)) throw e;
+      else log(`${w} did not build; not needed for this suite`);
     }
   }
   return {
@@ -192,6 +210,23 @@ const buildBundle = async (
   return bundle;
 };
 
+/**
+ * Webpack accepts files that mix require() with import/export, but Node loads them as ES modules, where require() does
+ * not exist (penguinmod-port's src/serialization/pm-compat.js). Rewrite those to CommonJS, as webpack would treat them.
+ */
+const cjsifyMixedModules = async (src: string) => {
+  if (!fs.existsSync(src)) return;
+  const { transformSync } = await import("esbuild");
+  for (const name of fs.readdirSync(src, { recursive: true }) as string[]) {
+    if (!name.endsWith(".js")) continue;
+    const file = path.join(src, name);
+    const code = fs.readFileSync(file, "utf8");
+    if (!/\brequire\(/.test(code) || !/^\s*(export|import)\s/m.test(code)) continue;
+    fs.writeFileSync(file, transformSync(code, { loader: "js", format: "cjs", target: "node18" }).code);
+  }
+};
+
+/** Performance: a directory the Node adapter can require() as the scratch-vm. */
 const buildVmDir = async (
   rt: Runtime,
   pin: Pin,
@@ -209,11 +244,15 @@ const buildVmDir = async (
     const repo = await prepareRepo(rt, part, work, log);
     if (!repo.workspace) {
       log("installing runtime dependencies");
+      fixLockfiles(work);
+      pinToLockfile(work);
+      await pinToDate(work);
       for (
         const lock of ["package-lock.json", "yarn.lock", "npm-shrinkwrap.json"]
       ) fs.rmSync(path.join(work, lock), { force: true });
       await run(["bun", "install", "--production", "--ignore-scripts"], work);
     }
+    await cjsifyMixedModules(path.join(repo.dir(part.provides.vm!), "src"));
     return repo.dir(part.provides.vm!);
   }
   const tmp = path.join(base, "npm");
@@ -229,10 +268,10 @@ const buildVmDir = async (
   return path.join(tmp, "node_modules", part.npm);
 };
 
-export const cleanup = (hash: string, keep: "bundle" | "none") => {
-  const base = buildPath(hash);
-  if (keep === "none") fs.rmSync(base, { recursive: true, force: true });
-  else fs.rmSync(path.join(base, "work"), { recursive: true, force: true });
+/** Free the disk a finished pin used (checkouts and node_modules), keeping only what a run still needs. */
+/** Deletes a version's build once it has been run; a retry rebuilds it. */
+export const cleanup = (hash: string) => {
+  fs.rmSync(buildPath(hash), { recursive: true, force: true });
 };
 
 export const buildLaunch = async (

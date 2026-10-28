@@ -56,11 +56,13 @@ export const writeResult = (a: {
   reusedFrom?: string;
   note?: string;
   resultsDir?: string;
+  /** Replace an existing backfilled result even when it came from the same version. */
+  force?: boolean;
 }): WriteOutcome => {
   const dir = dirFor(a.date, a.resultsDir);
   const file = path.join(
     dir,
-    resultFileName(a.suite, a.rt.id, a.variant ?? null),
+    resultFileName(a.suite, (a.rt.resultsAs ?? a.rt).id, a.variant ?? null),
   );
   const timestamp = timestampFor(a.date);
 
@@ -71,6 +73,7 @@ export const writeResult = (a: {
     } catch {}
     if (!existing?.backfill) return "kept-real";
     if (
+      !a.force &&
       existing.backfill.pin_hash === a.hash && !!existing.error === !!a.error
     ) return "unchanged";
   }
@@ -82,8 +85,8 @@ export const writeResult = (a: {
     suite: { id: a.suite, source_hash: a.suiteSourceHash },
     repo: repoInfo(),
     runtime: {
-      id: a.rt.id,
-      name: a.rt.name,
+      id: (a.rt.resultsAs ?? a.rt).id,
+      name: (a.rt.resultsAs ?? a.rt).name,
       kind: a.rt.kind,
       version,
       detail,
@@ -115,10 +118,15 @@ export const writeResult = (a: {
   };
 
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(body, null, 2) + "\n");
+  const writeAtomic = (p: string, text: string) => {
+    const tmp = `${p}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, p);
+  };
+  writeAtomic(file, JSON.stringify(body, null, 2) + "\n");
   const meta = path.join(dir, "meta.json");
   if (!fs.existsSync(meta)) {
-    fs.writeFileSync(
+    writeAtomic(
       meta,
       JSON.stringify(
         {

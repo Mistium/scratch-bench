@@ -47,6 +47,19 @@ const killGroup = (pid: number, signal: NodeJS.Signals) => {
   }
 };
 
+/**
+ * The useful part of a failed process's output: the lines that read like an error message (a stack trace's last
+ * lines are usually just `at ...` frames), then the final line, without repeats.
+ */
+export const errorSummary = (output: string, max = 4): string => {
+  const lines = output.split("\n").map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean);
+  const noise = /^(at |Node\.js v|\^+$|[{}]$|Browserslist:|npx update-browserslist|Why you should do it|\(Use `node --trace|Could not open log file)/;
+  const message = /(Error|error:|ERR_|Cannot |cannot |not defined|not found|not a function|failed|FATAL|Critical|No such|undefined reference|Unmatched|Unexpected)/;
+  const picked = [...new Set([...lines.filter((l) => !noise.test(l) && message.test(l)), lines.at(-1)!])]
+    .filter((l) => l && !noise.test(l));
+  return (picked.length ? picked : lines.slice(-2)).slice(0, max).join(" | ").slice(0, 600);
+};
+
 export const runOnce = async (
   command: Command,
   suite: Suite,
@@ -81,7 +94,7 @@ export const runOnce = async (
   let stderrTail = "";
   void (async () => {
     for await (const chunk of proc.stderr as ReadableStream<Uint8Array>) {
-      stderrTail = (stderrTail + new TextDecoder().decode(chunk)).slice(-2000);
+      stderrTail = (stderrTail + new TextDecoder().decode(chunk)).slice(-8000);
     }
   })();
 
@@ -138,7 +151,7 @@ export const runOnce = async (
       ? `timed out after ${timeoutMs / 1000}s`
       : `exited (code ${code}) before the suite finished${
         stderrTail
-          ? `: ${stderrTail.trim().split("\n").slice(-3).join(" | ")}`
+          ? `: ${errorSummary(stderrTail)}`
           : ""
       }`;
     return result;

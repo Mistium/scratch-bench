@@ -7,8 +7,10 @@ export type NodeVmId =
   | "scratch"
   | "turbowarp"
   | "mistwarp"
+  | "gandi"
   | "nitrobolt"
-  | "penguinmod";
+  | "penguinmod"
+  | "penguinmod-port";
 
 export const nodeVmRuntime = (
   id: NodeVmId,

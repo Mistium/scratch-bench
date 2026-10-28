@@ -27,8 +27,10 @@ const VMS = {
   scratch: { pkg: "@scratch/scratch-vm", compiler: false },
   turbowarp: { pkg: "turbowarp-vm", compiler: true },
   mistwarp: { pkg: "mistwarp-vm", compiler: true },
+  gandi: { pkg: "gandi-vm", compiler: true },
   nitrobolt: { pkg: "nitrobolt-vm", compiler: true },
   penguinmod: { pkg: "penguinmod-vm", compiler: true },
+  "penguinmod-port": { pkg: "penguinmod-port-vm", compiler: true },
 };
 
 const [vmName, file] = process.argv.slice(2);
@@ -46,10 +48,55 @@ if (vmName === "penguinmod") {
   globalThis.window = globalThis;
 }
 
-const VirtualMachine = require(process.env.BENCH_VM_DIR ?? VMS[vmName].pkg);
+// Older scratch-vm versions point "main" at a webpack build (dist/) that a source checkout does not have; their source
+// entry runs under Node as it is.
+const vmEntry = (dir) => {
+  const main = JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")).main;
+  return main && !fs.existsSync(`${dir}/${main}`) && fs.existsSync(`${dir}/src/index.js`)
+    ? `${dir}/src/index.js`
+    : dir;
+};
+// Some VMs (old Gandi IDE) read localStorage while running; give them an empty in-memory one, like a fresh browser
+// profile. Harmless for the rest, which never touch it under Node.
+if (typeof globalThis.localStorage === "undefined") {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+    key: (i) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+// PenguinMod's interpreted "broadcast and wait" sets `broadcastVar.isSent` on an undeclared name (a typo for
+// util.stackFrame.broadcastVar), which throws and ends the run. A global of that name makes the stray write harmless.
+globalThis.broadcastVar ??= {};
+const vmPath = process.env.BENCH_VM_DIR ? vmEntry(process.env.BENCH_VM_DIR) : VMS[vmName].pkg;
+// Some older VMs expect a browser at load time (e.g. DOMPurify only sets itself up when window.document exists). Only
+// then add a linkedom window and load again from scratch: modern VMs pick code paths by whether a window exists.
+const loadVm = () => {
+  try {
+    return require(vmPath);
+  } catch (e) {
+    if (!/DOMPurify|window is not defined|document is not defined/.test(String(e))) throw e;
+    const { parseHTML } = require("linkedom");
+    const dom = parseHTML("<!doctype html><html><head></head><body></body></html>");
+    globalThis.window ??= dom.window;
+    globalThis.document ??= dom.document;
+    globalThis.DOMParser ??= dom.DOMParser;
+    for (const key of Object.keys(require.cache)) delete require.cache[key];
+    return require(vmPath);
+  }
+};
+const VirtualMachine = loadVm();
 fs.readFileSync = readFileSync;
 
 const vm = new VirtualMachine();
+// Some VMs' code expects the editor's global (penguinmod-port refers to vm directly).
+globalThis.vm = vm;
 if (VMS[vmName].compiler && typeof vm.setCompilerOptions === "function") {
   vm.setCompilerOptions({
     enabled: process.env.BENCH_COMPILER !== "0",
@@ -76,7 +123,7 @@ vm.loadProject(fs.readFileSync(file)).then(() => {
     } else {
       idleSince ??= Date.now();
       if (Date.now() - idleSince > 2000) {
-        vm.quit();
+        vm.quit?.(); // older VMs have no quit(); the process exits next anyway
         process.exit(0);
       }
     }
@@ -84,6 +131,19 @@ vm.loadProject(fs.readFileSync(file)).then(() => {
 
   vm.start();
   vm.greenFlag();
+  // PenguinMod's recursion check reads op.id from stack frames whose op is null, and crashes the whole run. The check
+  // only decides whether a recursive call yields, so treat a frame it cannot read as not recursive.
+  const proto = vm.runtime.threads[0] && Object.getPrototypeOf(vm.runtime.threads[0]);
+  if (proto?.isRecursiveCall) {
+    const isRecursiveCall = proto.isRecursiveCall;
+    proto.isRecursiveCall = function (...args) {
+      try {
+        return isRecursiveCall.apply(this, args);
+      } catch {
+        return false;
+      }
+    };
+  }
 }).catch((e) => {
   console.error(e);
   process.exit(1);

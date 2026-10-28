@@ -11,6 +11,8 @@ export interface Source {
   ): Promise<string | null>;
   npmVersion(pkg: string, date: string): Promise<string | null>;
   pathExists?(repo: string, commit: string, path: string): Promise<boolean>;
+  /** Up to n commits before `commit` in its history, newest first. */
+  gitAncestors?(repo: string, commit: string, n: number): Promise<string[]>;
 }
 
 const API_CACHE = path.join(CACHE, "backfill", "api-cache.json");
@@ -92,15 +94,53 @@ const commitBefore = async (
 
 const STABLE = /^\d+\.\d+\.\d+$/;
 
+const git = async (cwd: string, ...args: string[]): Promise<string> => {
+  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if ((await proc.exited) !== 0) throw new Error(`git ${args.join(" ")}: ${err.trim()}`);
+  return out.trim();
+};
+
+// Blobless bare clones (history only), fetched once per process.
+const MIRRORS = path.join(CACHE, "backfill", "mirrors");
+const mirrors = new Map<string, Promise<string>>();
+const mirror = (repo: string): Promise<string> => {
+  if (!mirrors.has(repo)) {
+    mirrors.set(repo, (async () => {
+      const dir = path.join(MIRRORS, repo.replace("/", "__"));
+      if (!fs.existsSync(path.join(dir, "HEAD"))) {
+        fs.mkdirSync(MIRRORS, { recursive: true });
+        await git(MIRRORS, "clone", "--quiet", "--bare", "--filter=blob:none", `https://github.com/${repo}`, dir);
+      } else {
+        await git(dir, "fetch", "--quiet", "--prune", "origin", "+refs/heads/*:refs/heads/*");
+      }
+      return dir;
+    })());
+  }
+  return mirrors.get(repo)!;
+};
+
+/**
+ * The commit a branch pointed at on a date. This follows the branch's first parents: forks regularly merge their
+ * upstream, and a merged-in upstream commit keeps its older date, so "newest commit reachable from today's branch
+ * before the date" (what the GitHub API answers) can be an upstream commit that only reached the fork later.
+ */
+const branchAt = async (repo: string, date: string, branch?: string) => {
+  const dir = await mirror(repo);
+  return (await git(dir, "rev-list", "-1", "--first-parent", `--before=${endOfDay(date)}`, branch ?? "HEAD")) ||
+    null;
+};
+
 export const realSource: Source = {
   async gitHead(repo, date, { branch, paths }) {
-    const key = `git|${repo}|${branch ?? ""}|${
+    const key = `${paths?.length ? "git" : "git-first-parent"}|${repo}|${branch ?? ""}|${
       (paths ?? []).join(",")
     }|${date}`;
     return cached(key, isFinal(date), async () => {
-      if (!paths || paths.length === 0) {
-        return (await commitBefore(repo, date, branch))?.sha ?? null;
-      }
+      if (!paths || paths.length === 0) return branchAt(repo, date, branch);
       let newest: { sha: string; when: string } | null = null;
       for (const p of paths) {
         const c = await commitBefore(repo, date, branch, p);
@@ -146,5 +186,11 @@ export const realSource: Source = {
       .sort((a, b) => a[1].localeCompare(b[1]));
     const stable = published.filter(([v]) => STABLE.test(v));
     return (stable.at(-1) ?? published.at(-1))?.[0] ?? null;
+  },
+
+  async gitAncestors(repo, commit, n) {
+    return cached(`ancestors|${repo}|${commit}|${n}`, true, async () =>
+      (await gh(`repos/${repo}/commits?sha=${commit}&per_page=${n + 1}`, ".[].sha"))
+        .split("\n").filter((s) => s && s !== commit).slice(0, n));
   },
 };

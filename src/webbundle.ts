@@ -1,6 +1,8 @@
+import { onCleanup } from "./cleanup.ts";
+import { errorSummary } from "./measure.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, RUNTIME_DIR } from "./paths.ts";
+import { CACHE, ROOT, RUNTIME_DIR } from "./paths.ts";
 
 export type WebPart = {
   name: "vm" | "render" | "svg" | "storage" | "audio";
@@ -24,11 +26,45 @@ export const SCRIPTS: Record<WebPart["name"], string> = {
 const WEB_DIR = path.join(RUNTIME_DIR, "web");
 const SRC_DIR = path.join(RUNTIME_DIR, "src");
 
-export const run = async (
+// Parallel `bun install`s share bun's package cache and can trip over each other ("failed opening cache/package/...
+// dir"), so installs take turns; everything else still runs in parallel.
+let installQueue: Promise<unknown> = Promise.resolve();
+const isInstall = (cmd: string[]) => cmd[0] === "bun" && (cmd[1] === "install" || cmd[1] === "add");
+
+export const run = (
   cmd: string[],
   cwd: string,
   env: Record<string, string> = {},
+): Promise<void> => {
+  if (!isInstall(cmd)) return runNow(cmd, cwd, env);
+  // Installs take turns, so one that hangs (e.g. on an unreachable registry) would stall every build: give it a limit.
+  const turn = installQueue.then(() => runNow(cmd, cwd, env, INSTALL_TIMEOUT_MS));
+  installQueue = turn.catch(() => {});
+  return turn;
+};
+
+const INSTALL_TIMEOUT_MS = 10 * 60_000;
+
+const runNow = async (
+  cmd: string[],
+  cwd: string,
+  env: Record<string, string>,
+  timeoutMs?: number,
 ) => {
+  // Builds run at low priority so the machine stays reachable under load, and while performance runs are being
+  // measured they keep off the measuring cores (see the backfill engine).
+  const cpus = process.env.BENCH_BUILD_CPUS;
+  // On Linux each build gets its own process group, so stopping the harness also stops what the build started (e.g.
+  // the webpack under `bun run build`), instead of leaving it running and holding memory.
+  const linux = process.platform === "linux";
+  cmd = [
+    ...(linux ? ["setsid"] : []),
+    "nice",
+    "-n",
+    "10",
+    ...(cpus ? ["taskset", "-c", cpus] : []),
+    ...cmd,
+  ];
   const proc = Bun.spawn(cmd, {
     cwd,
     env: { ...process.env, ...env } as Record<string, string>,
@@ -36,20 +72,25 @@ export const run = async (
     stdout: "pipe",
     stderr: "pipe",
   });
+  const kill = () => {
+    try {
+      process.kill(linux ? -proc.pid : proc.pid, "SIGKILL");
+    } catch {}
+  };
+  const stop = onCleanup(kill);
+  let timedOut = false;
+  const timer = timeoutMs ? setTimeout(() => (timedOut = true, kill()), timeoutMs) : undefined;
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
-  if ((await proc.exited) !== 0) {
-    const noise =
-      /browserslist|update-browserslist-db|update-db#readme|DeprecationWarning|trace-deprecation/i;
-    const lines = `${err}\n${out}`.split("\n").filter((l) =>
-      l.trim() && !noise.test(l)
-    );
-    const first = lines.findIndex((l) => /ERROR in|Error:/.test(l));
-    const tail = (first >= 0 ? lines.slice(first) : lines.slice(-8)).slice(0, 8)
-      .join("\n");
-    throw new Error(`${cmd.join(" ")} failed in ${cwd}:\n${tail}`);
+  const code = await proc.exited;
+  clearTimeout(timer);
+  stop();
+  if (timedOut) throw new Error(`${cmd.join(" ")} timed out after ${timeoutMs! / 1000}s in ${cwd}`);
+  if (code !== 0) {
+    const tail = errorSummary(`${err}\n${out}`, 6);
+    throw Object.assign(new Error(`${cmd.join(" ")} failed in ${cwd}:\n${tail}`), { output: `${err}\n${out}` });
   }
 };
 
@@ -82,109 +123,264 @@ const stage = async (dep: string, spec: string) => {
   return dir;
 };
 
-const pinGitDeps = (dir: string) => {
+/**
+ * Pins each direct dependency to the version in the checkout's package-lock.json, when it has one. Bun does not read
+ * older npm lockfiles, so a spec like "latest" (TurboWarp in 2020 had `"scratch-blocks": "latest"`) would otherwise
+ * install today's release instead of the one the project was built with.
+ */
+export const pinToLockfile = (dir: string) => {
   const lockFile = path.join(dir, "package-lock.json");
   const pkgFile = path.join(dir, "package.json");
-  if (!fs.existsSync(lockFile)) return;
-  const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  if (!fs.existsSync(lockFile) || !fs.existsSync(pkgFile)) return;
+  let lock: any;
+  try {
+    lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  } catch {
+    return;
+  }
+  // Only registry packages: a git dependency's lockfile "version" is a placeholder (e.g. 0.0.0-development) and its
+  // package.json spec already names the exact source.
+  const entry = (name: string): { version?: string; resolved?: string } | undefined =>
+    lock.packages?.[`node_modules/${name}`] ?? lock.dependencies?.[name];
+  const fromRegistry = (e?: { resolved?: string }) =>
+    !e?.resolved || /^https:\/\/registry\.(npmjs\.org|yarnpkg\.com)\//.test(e.resolved);
+  const notRegistrySpec = /^(git|github:|gitlab:|bitbucket:|https?:|file:|link:|workspace:)|^[\w.-]+\/[\w.-]+(#.*)?$/;
   const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
-  for (const field of ["dependencies", "devDependencies"]) {
+  for (const field of ["dependencies", "devDependencies", "optionalDependencies"]) {
     for (const [name, spec] of Object.entries<string>(pkg[field] ?? {})) {
-      if (!/^(github:|git\+|git:|[\w.-]+\/[\w.-]+(#|$))/.test(spec)) continue;
-      const entry = lock.packages?.[`node_modules/${name}`] ??
-        lock.dependencies?.[name];
-      const m = String(entry?.resolved ?? entry?.version ?? "").match(
-        /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?#([0-9a-f]{40})$/,
-      );
-      if (m) pkg[field][name] = `github:${m[1]}#${m[2]}`;
+      const e = entry(name);
+      if (e?.version && fromRegistry(e) && !notRegistrySpec.test(spec)) pkg[field][name] = e.version;
     }
   }
   fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
-  fs.rmSync(lockFile);
+};
+
+/**
+ * Gets a checkout's lockfiles ready for bun. A repo with a yarn.lock uses yarn, so a package-lock.json beside it is
+ * stale (Gandi's scratch-render has one from before its move to Babel 7) and is removed. Lockfiles are pointed at the
+ * public npm registry: Gandi's resolve every package through its own mirror (npm.xiguacity.cn), which is unreachable
+ * from elsewhere, and the tarball paths are the same as npm's.
+ */
+const PRIVATE_REGISTRIES = /https?:\/\/(npm\.xiguacity\.cn|registry\.npmmirror\.com|registry\.npm\.taobao\.org)/g;
+export const fixLockfiles = (dir: string) => {
+  if (fs.existsSync(path.join(dir, "yarn.lock"))) fs.rmSync(path.join(dir, "package-lock.json"), { force: true });
+  for (const name of ["yarn.lock", "package-lock.json", ".npmrc"]) {
+    const file = path.join(dir, name);
+    if (!fs.existsSync(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    if (name === ".npmrc") {
+      if (PRIVATE_REGISTRIES.test(text)) fs.rmSync(file);
+      PRIVATE_REGISTRIES.lastIndex = 0;
+      continue;
+    }
+    const fixed = text.replace(PRIVATE_REGISTRIES, "https://registry.npmjs.org");
+    if (fixed !== text) fs.writeFileSync(file, fixed);
+  }
+};
+
+// Publish times of each registry package's versions, from the npm registry, kept on disk between runs.
+const REGISTRY_CACHE = path.join(CACHE, "registry-times");
+const publishTimes = new Map<string, Promise<Record<string, string> | null>>();
+const timesOf = (name: string) => {
+  let times = publishTimes.get(name);
+  if (!times) {
+    const file = path.join(REGISTRY_CACHE, `${encodeURIComponent(name)}.json`);
+    times = (async () => {
+      try {
+        // A day old at most, so versions published since are seen.
+        if (Date.now() - fs.statSync(file).mtimeMs < 86_400_000) return JSON.parse(fs.readFileSync(file, "utf8"));
+      } catch {}
+      try {
+        const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`);
+        if (!res.ok) return null;
+        const meta = await res.json() as { time?: Record<string, string>; versions?: Record<string, unknown> };
+        const result = Object.fromEntries(
+          Object.entries(meta.time ?? {}).filter(([v]) => meta.versions && v in meta.versions),
+        );
+        fs.mkdirSync(REGISTRY_CACHE, { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(result));
+        return result;
+      } catch {
+        return null;
+      }
+    })();
+    publishTimes.set(name, times);
+  }
+  return times;
+};
+
+/** The commit date of a checkout, or null when the directory is not one (e.g. staged inside this repo). */
+const commitDate = async (dir: string): Promise<string | null> => {
+  const git = async (...args: string[]) => {
+    const proc = Bun.spawn(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "ignore" });
+    const out = (await new Response(proc.stdout).text()).trim();
+    return (await proc.exited) === 0 ? out : "";
+  };
+  const top = await git("rev-parse", "--show-toplevel");
+  if (!top || fs.realpathSync(top) === fs.realpathSync(ROOT)) return null;
+  const date = await git("log", "-1", "--format=%cI");
+  return date ? new Date(date).toISOString() : null;
+};
+
+/**
+ * Pins each direct registry dependency that is still a range to the newest matching version published by the
+ * checkout's commit date. Without this an old checkout installs today's releases of anything its lockfile does not
+ * pin (MistWarp's "rotur-sdk": "^2.0.0" now resolves to a release that webpack 4 cannot parse).
+ */
+export const pinToDate = async (dir: string) => {
+  const pkgFile = path.join(dir, "package.json");
+  if (!fs.existsSync(pkgFile)) return;
+  const date = await commitDate(dir);
+  if (!date) return;
+  const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
+  const exact = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
+  const notRegistrySpec = /^(git|github:|gitlab:|bitbucket:|https?:|file:|link:|workspace:|npm:)|^[\w.-]+\/[\w.-]+(#.*)?$/;
+  let changed = false;
+  await Promise.all(["dependencies", "devDependencies", "optionalDependencies"].flatMap((field) =>
+    Object.entries<string>(pkg[field] ?? {}).map(async ([name, spec]) => {
+      if (exact.test(spec) || notRegistrySpec.test(spec)) return;
+      const times = await timesOf(name);
+      if (!times) return;
+      const range = /^[a-z]+$/i.test(spec) ? "*" : spec; // dist-tags such as "latest"
+      const allowPre = range.includes("-");
+      let best: string | null = null;
+      for (const [version, published] of Object.entries(times)) {
+        if (published > date || (!allowPre && version.includes("-"))) continue;
+        if (!Bun.semver.satisfies(version, range)) continue;
+        if (!best || Bun.semver.order(version, best) > 0) best = version;
+      }
+      if (best) {
+        pkg[field][name] = best;
+        changed = true;
+      }
+    })
+  ));
+  if (changed) fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
 };
 
 export const install = async (dir: string) => {
   if (fs.existsSync(path.join(dir, "node_modules/.bench-installed"))) return;
-  try {
+  fixLockfiles(dir);
+  pinToLockfile(dir);
+  await pinToDate(dir);
+  const lock = path.join(dir, "package-lock.json");
+  await run(["bun", "install", "--ignore-scripts"], dir).catch(async (e) => {
+    // Bun's migration of an npm lockfile can fail integrity checks (e.g. on git tarballs); resolve without it.
+    if (!fs.existsSync(lock)) throw e;
+    fs.rmSync(lock);
     await run(["bun", "install", "--ignore-scripts"], dir);
-  } catch (e) {
-    if (!/Integrity check failed/.test((e as Error).message)) throw e;
-    pinGitDeps(dir);
-    await run(["bun", "install", "--ignore-scripts"], dir);
-  }
+  });
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
 };
 
-const TRANSPILED = ["rotur-sdk"];
-const WRAPPER = "bench.webpack.config.cjs";
-const wrapperConfig = `const load = require("./webpack.config.js");
-const rule = {
-  test: /\\.m?js$/,
-  type: "javascript/auto",
-  loader: "babel-loader",
-  include: /[\\\\/]node_modules[\\\\/](${TRANSPILED.join("|")})[\\\\/]/,
-  options: { babelrc: false, configFile: false, presets: [["@babel/preset-env"]] },
+// Loads a package's webpack.config.js and keeps only the configs that write dist/web, the one bundle the benchmark
+// uses. Playground configs resolve dev-only files at load time (MistWarp's has `scratch-blocks/dist/vertical.js`,
+// which its scratch-blocks branch does not ship), so a module path that cannot be resolved while loading is let
+// through instead of failing the whole config.
+// It also gives images a loader when the config has none: some fork commits import them anyway.
+const WEB_ONLY = `const Module = require("module");
+const path = require("path");
+const resolve = Module._resolveFilename;
+Module._resolveFilename = function (request, ...rest) {
+  try {
+    return resolve.call(this, request, ...rest);
+  } catch (e) {
+    if (request.startsWith(".") || !request.includes("/")) throw e;
+    return __filename;
+  }
 };
-const patch = (c) => ({ ...c, module: { ...c.module, rules: [rule, ...(c.module?.rules ?? [])] } });
-module.exports = (...args) => {
-  const c = typeof load === "function" ? load(...args) : load;
-  return Array.isArray(c) ? c.map(patch) : patch(c);
-};
+let config;
+try {
+  config = require("./webpack.config.js");
+} finally {
+  Module._resolveFilename = resolve;
+}
+const web = typeof config === "function" ? [] : [].concat(config).filter((c) =>
+  c && c.output && /dist[\\/]web$/.test(path.resolve(c.output.path || ""))
+);
+let fileLoader;
+try { fileLoader = require.resolve("file-loader"); } catch {}
+for (const c of web) {
+  const rules = (c.module = c.module || {}).rules = c.module.rules || [];
+  const handled = (ext) => rules.some((r) => r.test instanceof RegExp && r.test.test("a." + ext));
+  const missing = ["png", "jpg", "jpeg", "gif", "svg"].filter((ext) => !handled(ext));
+  if (fileLoader && missing.length) {
+    rules.push({ test: new RegExp("\\\\.(" + missing.join("|") + ")$"), loader: fileLoader });
+  }
+}
+module.exports = web.length ? web : config;
 `;
-
-const patchBlocksPath = (dir: string) => {
-  const file = path.join(dir, "webpack.config.js");
-  const text = fs.readFileSync(file, "utf8");
-  const fixed = text.replaceAll(
-    "scratch-blocks/dist/vertical.js",
-    "scratch-blocks/shim/vertical.js",
-  );
-  if (fixed === text) return false;
-  fs.writeFileSync(file, fixed);
-  return true;
-};
 
 export const webpack = async (
   dir: string,
-): Promise<"production" | "development" | "patched"> => {
-  const cmd = ["node", "node_modules/webpack-cli/bin/cli.js", "--bail"];
+): Promise<"production" | "development"> => {
+  // In a workspace, webpack-cli may be hoisted to an ancestor's node_modules.
+  const rel = "node_modules/webpack-cli/bin/cli.js";
+  let d = dir;
+  while (!fs.existsSync(path.join(d, rel)) && path.dirname(d) !== d) d = path.dirname(d);
+  const cli = fs.existsSync(path.join(d, rel)) ? path.join(d, rel) : rel;
+  const cmd = ["node", cli, "--bail"];
   const legacy = { NODE_OPTIONS: "--openssl-legacy-provider" };
-  const attempt = async (extra: string[]) => {
-    try {
-      await run([...cmd, ...extra], dir, { ...legacy, NODE_ENV: "production" });
-      return "production" as const;
-    } catch {
-      await run([...cmd, ...extra], dir, {
-        ...legacy,
-        NODE_ENV: "development",
-      });
-      return "development" as const;
-    }
-  };
-  const fixups: Array<[RegExp, () => string[] | null]> = [
-    [
-      /Cannot find module 'scratch-blocks\/dist\/vertical\.js'/,
-      () => patchBlocksPath(dir) ? [] : null,
-    ],
-    [/Module parse failed/, () => {
-      fs.writeFileSync(path.join(dir, WRAPPER), wrapperConfig);
-      return ["--config", WRAPPER];
-    }],
-  ];
-  let extra: string[] = [];
-  let patched = false;
-  for (let tries = 0; ; tries++) {
-    try {
-      const mode = await attempt(extra);
-      return patched ? "patched" : mode;
-    } catch (e) {
-      const fix = fixups.find(([re]) => re.test((e as Error).message));
-      const next = fix && tries < fixups.length ? fix[1]() : null;
-      if (!next) throw e;
-      if (next.length) extra = next;
-      patched = true;
+  const cmds = [cmd];
+  if (fs.existsSync(path.join(dir, "webpack.config.js"))) {
+    fs.writeFileSync(path.join(dir, "bench-web.config.js"), WEB_ONLY);
+    cmds.unshift([...cmd, "--config", "bench-web.config.js"]);
+  }
+  let error: unknown;
+  for (const NODE_ENV of ["production", "development"] as const) {
+    for (const c of cmds) {
+      // Each package down-levelled below lets webpack get further, so try again until it builds or nothing is left.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          await run(c, dir, { ...legacy, NODE_ENV });
+          return NODE_ENV;
+        } catch (e) {
+          error ??= e;
+          if (!(await downlevelUnparsable(dir, (e as { output?: string }).output ?? ""))) break;
+        }
+      }
     }
   }
+  throw error;
+};
+
+/**
+ * Webpack 4 cannot parse newer syntax such as class fields. When a package in node_modules fails to parse, rewrite its
+ * JavaScript to ES2019 with esbuild so the bundle can still be built (MistWarp's rotur-sdk dependency uses class fields).
+ * Returns whether any package was rewritten.
+ */
+const downlevelled = new Set<string>();
+const downlevelUnparsable = async (dir: string, output: string): Promise<boolean> => {
+  const packages = new Set<string>();
+  for (const m of output.matchAll(/ERROR in (\.\/node_modules\/(?:@[^/\s]+\/)?[^/\s]+)[^\n]*\n\s*Module parse failed/g)) {
+    packages.add(path.join(dir, m[1]!));
+  }
+  const { transformSync } = await import("esbuild");
+  let rewrote = false;
+  // The checkout's own files that its Babel cannot parse (penguinmod-port's renderer uses ??).
+  for (const m of output.matchAll(/(?:ERROR in |\[\d+\] )(\.\/(?!node_modules\/)[^\s]+\.js)[^\n]*(?:\[failed\]|\n\s*Module (?:parse|build) failed)/g)) {
+    const file = path.join(dir, m[1]!);
+    if (!fs.existsSync(file) || downlevelled.has(file)) continue;
+    downlevelled.add(file);
+    try {
+      fs.writeFileSync(file, transformSync(fs.readFileSync(file, "utf8"), { loader: "js", target: "es2019" }).code);
+      rewrote = true;
+    } catch {}
+  }
+  for (const pkg of packages) {
+    if (!fs.existsSync(pkg) || fs.existsSync(path.join(pkg, ".bench-downlevelled"))) continue;
+    for (const file of fs.readdirSync(pkg, { recursive: true }) as string[]) {
+      if (!/\.(c|m)?js$/.test(file) || file.split(path.sep).includes("node_modules")) continue;
+      const full = path.join(pkg, file);
+      try {
+        const code = transformSync(fs.readFileSync(full, "utf8"), { loader: "js", target: "es2019" }).code;
+        fs.writeFileSync(full, code);
+      } catch {}
+    }
+    fs.writeFileSync(path.join(pkg, ".bench-downlevelled"), "");
+    rewrote = true;
+  }
+  return rewrote;
 };
 
 const buildPart = async (

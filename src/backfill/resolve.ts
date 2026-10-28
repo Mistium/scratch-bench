@@ -46,6 +46,9 @@ export const resolvePin = async (
 
   const parts: PinPart[] = [];
   for (const part of spec.parts) {
+    if (
+      (part.since && date < part.since) || (part.until && date > part.until)
+    ) continue;
     const provides = providesFor(part, suite);
     if (!provides) continue;
     if (isGit(part)) {

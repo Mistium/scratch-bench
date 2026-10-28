@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { endOfDay, schedule, timestampFor } from "./schedule.ts";
+import { endOfDay, schedule, timestampFor, everySchedule, fadingSchedule, monthlySchedule } from "./schedule.ts";
 
 const dates = schedule("2026-10-26");
 
@@ -66,5 +66,77 @@ describe("timestamps", () => {
   test("results are recorded at the nightly run time", () => {
     expect(timestampFor("2026-08-27")).toBe("2026-08-27T03:00:00.000Z");
     expect(endOfDay("2026-08-27")).toBe("2026-08-27T23:59:59Z");
+  });
+});
+
+describe("everySchedule", () => {
+  test("gives one checkpoint every seven days, ending today", () => {
+    const weekly = everySchedule("2025-10-27", "2026-10-27", 7);
+    expect(weekly.length).toBe(53);
+    expect(weekly[0]).toBe("2025-10-28");
+    expect(weekly.at(-1)).toBe("2026-10-27");
+    for (let i = 1; i < weekly.length; i++) {
+      const gap = (Date.parse(weekly[i]!) - Date.parse(weekly[i - 1]!)) /
+        86_400_000;
+      expect(gap).toBe(7);
+    }
+  });
+
+  test("never goes before the requested start", () => {
+    expect(everySchedule("2026-10-01", "2026-10-27", 7)).toEqual([
+      "2026-10-06",
+      "2026-10-13",
+      "2026-10-20",
+      "2026-10-27",
+    ]);
+  });
+});
+
+describe("monthlySchedule", () => {
+  test("is the 1st of each month, plus the last day so current versions are included", () => {
+    expect(monthlySchedule("2025-08-01", "2025-11-12")).toEqual([
+      "2025-08-01",
+      "2025-09-01",
+      "2025-10-01",
+      "2025-11-01",
+      "2025-11-12",
+    ]);
+  });
+
+  test("starts at the next month when `from` is mid-month, and does not repeat a last day that is the 1st", () => {
+    expect(monthlySchedule("2025-08-15", "2025-10-01")).toEqual([
+      "2025-09-01",
+      "2025-10-01",
+    ]);
+  });
+});
+
+describe("fadingSchedule", () => {
+  const dates = fadingSchedule("2021-10-27", "2026-10-27");
+  const gapAt = (d: string) => {
+    const i = dates.findIndex((x) => x >= d);
+    return (Date.parse(dates[i]!) - Date.parse(dates[i - 1]!)) / 86_400_000;
+  };
+
+  test("ends today and starts exactly at `from`", () => {
+    expect(dates.at(-1)).toBe("2026-10-27");
+    expect(dates[0]).toBe("2021-10-27");
+  });
+
+  test("gets steadily less detailed going back", () => {
+    expect(gapAt("2026-10-20")).toBe(7);
+    expect(gapAt("2026-04-01")).toBeGreaterThan(gapAt("2026-09-01"));
+    expect(gapAt("2025-01-01")).toBeGreaterThan(gapAt("2026-04-01"));
+    expect(gapAt("2023-01-01")).toBeGreaterThan(gapAt("2025-01-01"));
+    // (from the second gap on: the first one ends at `from`, so it can be shorter)
+    for (let i = 3; i < dates.length; i++) {
+      const later = Date.parse(dates[i]!) - Date.parse(dates[i - 1]!);
+      const earlier = Date.parse(dates[i - 1]!) - Date.parse(dates[i - 2]!);
+      expect(earlier).toBeGreaterThanOrEqual(later);
+    }
+  });
+
+  test("stays a manageable number of checkpoints", () => {
+    expect(dates.length).toBeLessThan(60);
   });
 });

@@ -16,7 +16,10 @@ export const mistwarp = nodeVmRuntime(
     variants: COMPILER_VARIANTS,
     history: {
       variants: COMPILER_VARIANTS,
-      since: { performance: "2025-08-01", parity: "2025-08-01" },
+      // A fork's git history includes the code it was forked from, so start when the fork's repo was created.
+      since: { performance: "2024-09-22", parity: "2024-09-22" },
+      // ponytail: many commits pin scratch-blocks#develop-builds at a commit with no dist/, so measure a nearby one that builds.
+      fallback: 5,
       parts: [
         { git: "MistWarp/scratch-vm", provides: { vm: "." } },
         { git: "MistWarp/scratch-render", provides: { render: "." } },

@@ -7,6 +7,12 @@ import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
 import { measureSuite } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
+import {
+  progressDone,
+  progressFailed,
+  progressStart,
+  progressUpdate,
+} from "./progress.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
 import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
@@ -26,6 +32,8 @@ const USAGE = `usage: bun run bench [setup] [options]
   --runtime a,b           runtimes to test (default: all)
   --suite a,b             suites to run: performance, parity (default: all)
   --runs N                runs per runtime for the performance suite (default 10)
+  --min-runs N            stop after this many runs when the results have settled (default 3)
+  --target-rsd PCT        settle threshold, as a percent of the mean (default 4)
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --timeout S             seconds before a run is killed (default 300)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
@@ -41,6 +49,8 @@ const { values: opts, positionals } = parseArgs({
     runtime: { type: "string" },
     suite: { type: "string" },
     runs: { type: "string" },
+    "min-runs": { type: "string" },
+    "target-rsd": { type: "string" },
     "parity-runs": { type: "string" },
     timeout: { type: "string", default: "300" },
     display: { type: "string", default: "x11" },
@@ -69,6 +79,21 @@ const count = (s: string | undefined, fallback: number) => {
   return n;
 };
 
+const percent = (s: string | undefined, fallback: number) => {
+  if (s === undefined) return fallback;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`expected a non-negative percentage, got "${s}"`);
+  }
+  return n / 100;
+};
+
+const writeJson = (file: string, value: unknown) => {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n");
+  fs.renameSync(tmp, file);
+};
+
 const main = async (): Promise<number> => {
   const command = positionals[0] ?? "bench";
   if (!["bench", "setup"].includes(command)) {
@@ -81,10 +106,12 @@ const main = async (): Promise<number> => {
   const runtimes = selectRuntimes(split(opts.runtime));
   const suites = selectSuites(split(opts.suite));
   const timeoutMs = count(opts.timeout, 300) * 1000;
+  progressStart({ phase: "planning", detail: "building benchmark suites" });
 
   log("Building suites from source");
   const built = new Map<string, Built>();
   for (const suite of suites) {
+    progressUpdate({ detail: `building ${suite.id} suite` });
     const b = await buildSuite(suite);
     built.set(suite.id, b);
     log(
@@ -97,6 +124,7 @@ const main = async (): Promise<number> => {
   log("Setting up runtimes");
   const setups = new Map<string, SetupInfo | Error>();
   for (const rt of runtimes) {
+    progressUpdate({ detail: `setting up ${rt.name}` });
     try {
       const info = await rt.setup({
         offline: opts.offline!,
@@ -110,6 +138,7 @@ const main = async (): Promise<number> => {
     }
   }
   if (command === "setup") {
+    progressDone({ detail: "runtimes are ready" });
     return [...setups.values()].some((s) => s instanceof Error) ? 1 : 0;
   }
 
@@ -121,53 +150,72 @@ const main = async (): Promise<number> => {
   const repo = repoInfo();
   const results: SuiteResult[] = [];
 
-  for (const suite of suites) {
-    for (const rt of runtimes) {
-      const setup = setups.get(rt.id)!;
-      for (
-        const variant of variantsToRun(
-          setupVariants(setup),
-          !opts["no-variants"],
-        )
-      ) {
-        const result = await runSuite(
-          suite,
-          rt,
-          built.get(suite.id)!,
-          setup,
-          timeoutMs,
-          variant,
-        );
-        const full: SuiteResult = { ...result, timestamp, host, repo };
-        results.push(full);
-        fs.writeFileSync(
-          path.join(
-            outDir,
-            resultFileName(suite.id, rt.id, full.runtime.variant ?? null),
-          ),
-          JSON.stringify(full, null, 2) + "\n",
-        );
-      }
-    }
+  const plan = suites.flatMap((suite) =>
+    runtimes.flatMap((rt) =>
+      variantsToRun(setupVariants(setups.get(rt.id)!), !opts["no-variants"])
+        .map((variant) => ({ suite, rt, variant }))
+    )
+  );
+  progressStart({
+    phase: "running",
+    total: plan.length,
+    detail: `0 of ${plan.length} results`,
+  });
+
+  let done = 0;
+  for (const item of plan) {
+    const { suite, rt, variant } = item;
+    const setup = setups.get(rt.id)!;
+    const label = labelOf(rt.name, variant && infoOf(variant));
+    progressUpdate({
+      phase: "running",
+      suite: suite.id,
+      runtime: rt.name,
+      label,
+      index: done + 1,
+      total: plan.length,
+      detail: `running ${label}`,
+    });
+    const result = await runSuite(
+      suite,
+      rt,
+      built.get(suite.id)!,
+      setup,
+      timeoutMs,
+      variant,
+    );
+    const full: SuiteResult = { ...result, timestamp, host, repo };
+    results.push(full);
+    writeJson(
+      path.join(
+        outDir,
+        resultFileName(suite.id, full.runtime.id, full.runtime.variant ?? null),
+      ),
+      full,
+    );
+    done++;
+    progressUpdate({
+      phase: "running",
+      index: done,
+      total: plan.length,
+      detail: `${done} of ${plan.length} results`,
+    });
   }
-  fs.writeFileSync(
+  writeJson(
     path.join(outDir, "meta.json"),
-    JSON.stringify(
-      {
-        schema_version: 1,
-        timestamp,
-        host,
-        repo,
-        command: process.argv.slice(2),
-      },
-      null,
-      2,
-    ) + "\n",
+    {
+      schema_version: 1,
+      timestamp,
+      host,
+      repo,
+      command: process.argv.slice(2),
+    },
   );
 
   log();
   log(renderReport(results));
   log(`Results saved to ${path.relative(process.cwd(), outDir)}`);
+  progressDone({ detail: `${done} results in ${path.basename(outDir)}` });
   if (opts.json) console.log(JSON.stringify(results, null, 2));
   return results.some((r) =>
       !r.skipped && (r.error || !r.runs.some((x) => x.ok))
@@ -189,8 +237,8 @@ const runSuite = async (
     schema_version: 1 as const,
     suite: { id: suite.id, source_hash: built.hash },
     runtime: {
-      id: rt.id,
-      name: rt.name,
+      id: (rt.resultsAs ?? rt).id,
+      name: (rt.resultsAs ?? rt).name,
       kind: rt.kind,
       version: setup instanceof Error ? "unknown" : setup.version,
       detail: setup instanceof Error ? {} : setup.detail ?? {},
@@ -234,8 +282,15 @@ const runSuite = async (
   const measured = await measureSuite(suite, launcher, built.sb3, {
     variant,
     runs: total,
+    minRuns: count(opts["min-runs"], Math.min(3, total)),
+    targetRsd: percent(opts["target-rsd"], 4),
     timeoutMs,
     displayKind: opts.display as DisplayKind,
+    onRun: (i, n, ok) =>
+      progressUpdate({
+        phase: "running",
+        detail: `${label}: run ${i}/${n}${ok ? "" : " failed"}`,
+      }),
     log,
   });
   base.runs = measured.runs;
@@ -248,7 +303,9 @@ const runSuite = async (
 main().then(
   (code) => process.exit(code),
   (e) => {
-    console.error(e instanceof Error ? e.message : e);
+    const message = e instanceof Error ? e.message : String(e);
+    progressFailed(message);
+    console.error(message);
     process.exit(1);
   },
 );

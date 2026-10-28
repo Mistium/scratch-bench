@@ -211,6 +211,35 @@ describe("resolvePin", () => {
     );
   });
 
+  test("a part's since/until window picks where a moved package comes from", async () => {
+    const rt: Runtime = {
+      ...monorepo,
+      history: {
+        since: { parity: "2025-08-01" },
+        parts: [
+          { git: "Org/editor", provides: { vm: "packages/vm" } },
+          { npm: "storage", until: "2026-06-09", provides: "storage" },
+          {
+            git: "Org/editor",
+            since: "2026-06-10",
+            provides: { storage: "packages/storage" },
+          },
+        ],
+      },
+    };
+    const at = async (d: string) =>
+      (await resolvePin(rt, "parity", d, source, { latest: false }))!.parts
+        .map((p) => p.provides);
+    expect(await at("2026-06-09")).toEqual([
+      { vm: "packages/vm" },
+      "storage",
+    ]);
+    expect(await at("2026-06-10")).toEqual([
+      { vm: "packages/vm" },
+      { storage: "packages/storage" },
+    ]);
+  });
+
   test("a standalone fork is not path-filtered", async () => {
     calls.length = 0;
     await resolvePin(fork, "performance", "2026-05-01", source, {

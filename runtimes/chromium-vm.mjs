@@ -9,10 +9,10 @@ const root = path.resolve(import.meta.dirname, "..");
 process.stdout.on("error", () => process.exit(0));
 
 const [kind, file] = process.argv.slice(2);
-const KINDS = ["scratch", "turbowarp", "mistwarp", "nitrobolt", "penguinmod"];
+const KINDS = ["scratch", "turbowarp", "mistwarp", "nitrobolt", "penguinmod", "penguinmod-port", "gandi"];
 if (!KINDS.includes(kind) || !file) {
   console.error(
-    "usage: node chromium-vm.mjs <scratch|turbowarp|mistwarp|nitrobolt|penguinmod> <project.sb3>",
+    "usage: node chromium-vm.mjs <scratch|turbowarp|mistwarp|nitrobolt|penguinmod|penguinmod-port|gandi> <project.sb3>",
   );
   process.exit(2);
 }
@@ -46,6 +46,19 @@ if (!fs.existsSync(audioPath)) {
   fs.writeFileSync(audioPath, out);
 }
 
+// Newer bundles (webpack 5, e.g. NitroBolt's scratch-storage) expect Node's Buffer as a global; give the page one.
+const bufferPath = path.join(root, ".cache", "runtimes", "web", "buffer.js");
+if (!fs.existsSync(bufferPath)) {
+  const { buildSync } = require("esbuild");
+  buildSync({
+    stdin: { contents: 'window.Buffer = require("buffer").Buffer;', resolveDir: root },
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    outfile: bufferPath,
+  });
+}
+
 const types = {
   ".js": "application/javascript",
   ".html": "text/html",
@@ -53,10 +66,12 @@ const types = {
 };
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);
+  if (url === "/favicon.ico") return res.writeHead(204).end();
   let p;
   if (url === "/" || url === "/index.html") {
     p = path.join(root, "runtimes/chromium/index.html");
   } else if (url === "/audio.js") p = audioPath;
+  else if (url === "/buffer.js") p = bufferPath;
   else if (url === "/project.sb3") p = path.resolve(file);
   else if (url.startsWith("/node_modules/")) p = path.join(root, url);
   else if (url.startsWith("/web/")) p = path.join(bundleDir, url.slice(5));
@@ -74,12 +89,15 @@ const server = http.createServer((req, res) => {
     ].find((c) => fs.existsSync(c));
   }
   if (!p) {
+    console.error(`404 ${url}`);
     res.writeHead(404).end();
     return;
   }
   fs.readFile(p, (e, d) => {
-    if (e) res.writeHead(404).end();
-    else {
+    if (e) {
+      console.error(`404 ${url}`);
+      res.writeHead(404).end();
+    } else {
       res.writeHead(200, {
         "Content-Type": types[path.extname(p)] || "application/octet-stream",
       });
@@ -106,13 +124,29 @@ const server = http.createServer((req, res) => {
     });
   }
   const page = await browser.newPage();
-  page.on("pageerror", (e) => console.error("pageerror", e.message));
+  // A runtime whose generated code throws on every tick never finishes; once the same error has repeated this often
+  // with no result printed, stop and report it instead of waiting for the harness's timeout.
+  let printed = false;
+  const repeats = new Map();
+  page.on("pageerror", (e) => {
+    console.error("pageerror", e.message);
+    const n = (repeats.get(e.message) ?? 0) + 1;
+    repeats.set(e.message, n);
+    if (n >= 200 && !printed) {
+      console.error(`stopping: "${e.message}" was thrown ${n} times before any result`);
+      browser.close().catch(() => {}).finally(() => process.exit(1));
+    }
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
   const finished = new Promise((resolve) => {
     page.on("console", (m) => {
       const text = m.text();
       if (process.env.BENCH_DEBUG) process.stderr.write(`console: ${text}\n`);
-      if (text.startsWith("[PROJECT] ")) process.stdout.write(`${text}\n`);
+      if (text.startsWith("[THREAD-ERROR] ") || m.type() === "error") process.stderr.write(`${text}\n`);
+      else if (text.startsWith("[PROJECT] ")) {
+        printed = true;
+        process.stdout.write(`${text}\n`);
+      }
       else if (text === "[BENCH-IDLE]") resolve();
     });
   });

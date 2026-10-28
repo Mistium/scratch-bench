@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<div id="player"></div>
+<!-- Served from the root of a forkphorus checkout, so the player finds its fonts and sounds where it expects them. -->
+<script>
+const loadScript = (src) =>
+  new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("failed to load " + src));
+    document.head.appendChild(s);
+  });
+
+// `scripts` are the checkout's own page scripts (its libraries, then phosphorus.dist.js), in order.
+window.start = async (scripts) => {
+  for (const src of scripts) await loadScript(src);
+  const player = new P.player.Player();
+  player.setOptions({ turbo: false, focusOnLoad: false, autoplayPolicy: "always" });
+  document.getElementById("player").appendChild(player.root);
+  const project = await (await fetch("/__bench.sb3")).arrayBuffer();
+  // The player reports load failures through its events rather than by rejecting, so wait for one of them.
+  await new Promise((resolve, reject) => {
+    player.onload.subscribe(resolve);
+    player.onerror.subscribe((e) => reject(new Error("load failed: " + (e && (e.message || e)))));
+    player.loadProjectFromBuffer(project, "sb3").catch(reject);
+  });
+  player.triggerGreenFlag();
+  const stage = player.getStage();
+
+  // Same contract as the scratch-vm runners: print the stage's "output" list as it grows, then report idle once no
+  // script has run for two seconds (finished threads leave empty slots in the runtime's queue).
+  let printed = 0;
+  let idleSince = null;
+  setInterval(() => {
+    const list = stage.lists.output;
+    if (list) {
+      while (printed < list.length) console.log("[PROJECT] " + String(list[printed++]));
+    }
+    if (stage.runtime.queue.some(Boolean)) idleSince = null;
+    else {
+      idleSince = idleSince ?? Date.now();
+      if (Date.now() - idleSince > 2000) {
+        console.log("[BENCH-IDLE]");
+        idleSince = Infinity;
+      }
+    }
+  }, 50);
+};
+</script>

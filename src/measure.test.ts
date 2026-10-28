@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runOnce } from "./measure.ts";
+import { errorSummary, runOnce } from "./measure.ts";
 import type { Suite } from "./suites.ts";
 
 const suite = {
@@ -37,4 +37,24 @@ describe("runOnce", () => {
     expect(r.ok).toBe(true);
     expect(r.lines).toEqual(["a | 1", "DONE"]);
   });
+});
+
+test("a failure's summary keeps its error message, not the end of its stack trace", () => {
+  const pm = `/x/thread.js:506
+            const block = this.target.blocks.getBlock(this.stackFrames[i].op.id) ||
+                                                                             ^
+
+TypeError: Cannot read properties of null (reading 'id')
+    at Thread.isRecursiveCall (/x/thread.js:506:78)
+    at listOnTimeout (node:internal/timers:685:17)
+
+Node.js v24.22.1`;
+  expect(errorSummary(pm)).toBe("TypeError: Cannot read properties of null (reading 'id')");
+  const webpack = `Browserslist: caniuse-lite is outdated. Please run:
+  npx update-browserslist-db@latest
+Error: Cannot find module 'babel-loader'
+Require stack:
+- /x/webpack.config.js
+  requireStack: [ '/x/webpack.config.js' ]`;
+  expect(errorSummary(webpack)).toStartWith("Error: Cannot find module 'babel-loader'");
 });

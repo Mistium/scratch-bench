@@ -12,9 +12,13 @@ const loadScript = (src) =>
     document.head.appendChild(s);
   });
 
+// PenguinMod's interpreted "broadcast and wait" writes to an undeclared `broadcastVar`; give the stray write a target.
+window.broadcastVar = {};
+
 window.start = async (kind, scripts, compiler = true) => {
   let vm;
   {
+    await loadScript("/buffer.js");
     for (
       const src of scripts ?? [
         "/node_modules/@scratch/scratch-vm/dist/web/scratch-vm.js",
@@ -25,6 +29,8 @@ window.start = async (kind, scripts, compiler = true) => {
       ]
     ) await loadScript(src);
     vm = new VirtualMachine();
+    // Some VMs' code expects the editor's global (penguinmod-port refers to vm directly).
+    window.vm = vm;
     if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {
       vm.setCompilerOptions({ enabled: compiler, warpTimer: false });
     }
@@ -42,9 +48,61 @@ window.start = async (kind, scripts, compiler = true) => {
     const SVG = ScratchSVGRenderer.default || ScratchSVGRenderer;
     vm.attachV2BitmapAdapter(new SVG.BitmapAdapter());
     await vm.loadProject(await (await fetch("/project.sb3")).arrayBuffer());
+    // Scratch's own "switch backdrop to () and wait" throws in the interpreter when it starts scripts: it calls
+    // runtime.startHats, which points the shared block utility at the new threads. Most VMs let the error reach the
+    // handler below, which skips the block; NitroBolt catches it itself and ends the whole script. Skip it here instead,
+    // so every VM is treated the same.
+    const switchAndWait = vm.runtime._primitives.looks_switchbackdroptoandwait;
+    if (switchAndWait && !compiler) {
+      vm.runtime._primitives.looks_switchbackdroptoandwait = function (args, util) {
+        const thread = util.thread;
+        try {
+          return switchAndWait.call(this, args, util);
+        } catch (e) {
+          console.error("[THREAD-ERROR] looks_switchbackdroptoandwait: " + (e && e.message));
+          // As the handler below would: move past the block, and let other scripts run before this one goes on.
+          util.thread = thread;
+          thread.goToNextBlock();
+          thread.status = 3; // Thread.STATUS_YIELD_TICK
+        }
+      };
+    }
+    // When a runtime bug makes one test's code throw (e.g. PenguinMod's "broadcastVar is not defined"), stop only that
+    // script: otherwise it throws again every frame and the whole project stalls, so no test reports at all. The
+    // tests that depended on it then fail, and every other test still runs and counts.
+    const sequencer = vm.runtime.sequencer;
+    const step = sequencer.stepThread.bind(sequencer);
+    sequencer.stepThread = (thread) => {
+      try {
+        return step(thread);
+      } catch (e) {
+        console.error("[THREAD-ERROR] " + (e && e.message) + " | " + String(e && e.stack).split("\n").slice(1, 4).map((l) => l.trim()).join(" < "));
+        // An interpreted script runs a block at a time, so treat the failing block as a no-op and carry on: the test
+        // that used it fails, and the script's later tests still run. Compiled scripts cannot be resumed mid-way, so
+        // they stop. A script that keeps failing stops too.
+        thread.benchErrors = (thread.benchErrors || 0) + 1;
+        if (!thread.isCompiled && thread.peekStack && thread.peekStack() && thread.benchErrors < 1000) {
+          thread.goToNextBlock();
+        } else {
+          thread.status = 4; // Thread.STATUS_DONE
+        }
+      }
+    };
     vm.setTurboMode(false);
     vm.start();
     vm.greenFlag();
+    // PenguinMod's recursion check reads op.id from frames whose op is null; treat those as not recursive.
+    const proto = vm.runtime.threads[0] && Object.getPrototypeOf(vm.runtime.threads[0]);
+    if (proto && proto.isRecursiveCall) {
+      const isRecursiveCall = proto.isRecursiveCall;
+      proto.isRecursiveCall = function (...args) {
+        try {
+          return isRecursiveCall.apply(this, args);
+        } catch {
+          return false;
+        }
+      };
+    }
   }
   let printed = 0;
   let idleSince = null;
