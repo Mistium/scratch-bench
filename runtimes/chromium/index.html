@@ -24,7 +24,22 @@ window.start = async (kind, scripts, compiler = true) => {
         "/audio.js",
       ]
     ) await loadScript(src);
-    vm = new VirtualMachine();
+    // ClipCC names its renderer's global differently, and takes a config object whose extension manager its GUI
+    // supplies.
+    if (kind === "clipcc") window.ScratchRender = window.ClipCCRender;
+    vm = kind === "clipcc"
+      ? new VirtualMachine({
+        extensionManager: {
+          emitEvent() {},
+          emitEventToAll() {},
+          getExtensionLoadOrder: (ids) => ids,
+          loadExtensionsWithMode: (ids) =>
+            ids.forEach((id) => vm.extensionManager.isExtensionLoaded(id) || vm.extensionManager.loadExtensionIdSync(id)),
+        },
+      })
+      : new VirtualMachine();
+    // The port's code refers to the editor's global `vm`.
+    if (kind === "penguinmod-port") window.vm = vm;
     if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {
       vm.setCompilerOptions({ enabled: compiler, warpTimer: false });
     }

@@ -1,3 +1,4 @@
+import { transformSync } from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, RUNTIME_DIR } from "./paths.ts";
@@ -6,6 +7,8 @@ export type WebPart = {
   name: "vm" | "render" | "svg" | "storage" | "audio";
   dep: string;
   how: "webpack" | "esbuild" | "dist";
+  /** Lower syntax webpack 4 cannot parse and build only the browser bundle (PenguinMod (port), see webpack). */
+  modern?: boolean;
 };
 
 export interface WebRecipe {
@@ -103,13 +106,40 @@ const pinGitDeps = (dir: string) => {
   fs.rmSync(lockFile);
 };
 
+// Gandi resolves every package through its own npm mirror, unreachable from elsewhere; the tarball paths are npm's.
+const PRIVATE_REGISTRY = /https?:\/\/npm\.xiguacity\.cn/g;
+
+const rewriteLockfiles = (dir: string, from: RegExp | string, to: string) => {
+  for (const name of ["yarn.lock", "package-lock.json"]) {
+    const file = path.join(dir, name);
+    if (!fs.existsSync(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    const fixed = text.replaceAll(from, to);
+    if (fixed !== text) fs.writeFileSync(file, fixed);
+  }
+};
+
 export const install = async (dir: string) => {
   if (fs.existsSync(path.join(dir, "node_modules/.bench-installed"))) return;
+  // A repo with a yarn.lock uses yarn, so a package-lock.json beside it is stale (Gandi's scratch-render has one).
+  if (fs.existsSync(path.join(dir, "yarn.lock"))) fs.rmSync(path.join(dir, "package-lock.json"), { force: true });
+  rewriteLockfiles(dir, PRIVATE_REGISTRY, "https://registry.npmjs.org");
   try {
     await run(["bun", "install", "--ignore-scripts"], dir);
   } catch (e) {
-    if (!/Integrity check failed/.test((e as Error).message)) throw e;
-    pinGitDeps(dir);
+    const message = (e as Error).message;
+    const pkgFile = path.join(dir, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf8"));
+    const missing = message.match(/(\S+)@\S+ failed to resolve/)?.[1];
+    if (/Integrity check failed/.test(message)) pinGitDeps(dir);
+    // SSH git URLs need a key; the same repos over HTTPS do not (PenguinMod (port)'s lockfile has them).
+    else if (/failed to migrate lockfile/.test(message)) {
+      rewriteLockfiles(dir, "git+ssh://git@github.com/", "git+https://github.com/");
+    } // A devDependency the lockfile lacks (ClipCC's scratch-render lists clipcc-vm, used only by its playground).
+    else if (missing && pkg.devDependencies?.[missing]) {
+      delete pkg.devDependencies[missing];
+      fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
+    } else throw e;
     await run(["bun", "install", "--ignore-scripts"], dir);
   }
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
@@ -132,6 +162,14 @@ module.exports = (...args) => {
 };
 `;
 
+// Only the configs that write the browser bundle (dist/web): PenguinMod (port)'s also has playground configs that copy
+// other packages' dist/ folders, which are not built here.
+const WEB_ONLY = "bench.web.config.cjs";
+const webOnlyConfig = `const load = require("./webpack.config.js");
+const web = typeof load === "function" ? [] : [].concat(load).filter((c) => /dist[\\\\/]web$/.test(String(c.output?.path ?? "")));
+module.exports = web.length ? web : load;
+`;
+
 const patchBlocksPath = (dir: string) => {
   const file = path.join(dir, "webpack.config.js");
   const text = fs.readFileSync(file, "utf8");
@@ -146,6 +184,7 @@ const patchBlocksPath = (dir: string) => {
 
 export const webpack = async (
   dir: string,
+  { modern = false }: { modern?: boolean } = {},
 ): Promise<"production" | "development" | "patched"> => {
   const cmd = ["node", "node_modules/webpack-cli/bin/cli.js", "--bail"];
   const legacy = { NODE_OPTIONS: "--openssl-legacy-provider" };
@@ -161,7 +200,18 @@ export const webpack = async (
       return "development" as const;
     }
   };
-  const fixups: Array<[RegExp, () => string[] | null]> = [
+  const rewritten = new Set<string>();
+  const fixups: Array<[RegExp, (message: string) => string[] | null]> = [
+    // `modern` only: syntax webpack 4 or a package's own Babel cannot parse (PenguinMod (port)'s scratch-render uses
+    // `??`): lower the file that failed to ES2019 with esbuild.
+    ...(modern ? [[/Unexpected token/, (message: string) => {
+      const file = message.match(/ERROR in \.\/(\S+\.js)/)?.[1];
+      if (!file || rewritten.has(file) || !fs.existsSync(path.join(dir, file))) return null;
+      rewritten.add(file);
+      const full = path.join(dir, file);
+      fs.writeFileSync(full, transformSync(fs.readFileSync(full, "utf8"), { loader: "js", target: "es2019" }).code);
+      return [];
+    }] as [RegExp, (message: string) => string[] | null]] : []),
     [
       /Cannot find module 'scratch-blocks\/dist\/vertical\.js'/,
       () => patchBlocksPath(dir) ? [] : null,
@@ -171,7 +221,8 @@ export const webpack = async (
       return ["--config", WRAPPER];
     }],
   ];
-  let extra: string[] = [];
+  if (modern) fs.writeFileSync(path.join(dir, WEB_ONLY), webOnlyConfig);
+  let extra: string[] = modern ? ["--config", WEB_ONLY] : [];
   let patched = false;
   for (let tries = 0; ; tries++) {
     try {
@@ -179,7 +230,8 @@ export const webpack = async (
       return patched ? "patched" : mode;
     } catch (e) {
       const fix = fixups.find(([re]) => re.test((e as Error).message));
-      const next = fix && tries < fixups.length ? fix[1]() : null;
+      // Each file lowered for `modern` needs its own round, so those rounds do not count against the budget.
+      const next = fix && tries < fixups.length + rewritten.size ? fix[1]((e as Error).message) : null;
       if (!next) throw e;
       if (next.length) extra = next;
       patched = true;
@@ -199,7 +251,7 @@ const buildPart = async (
     return "prebuilt";
   }
   const dir = await stage(part.dep, spec);
-  return buildDirPart(part.name, dir, out, part.how);
+  return buildDirPart(part.name, dir, out, part.how, { modern: part.modern });
 };
 
 export const buildDirPart = async (
@@ -207,7 +259,7 @@ export const buildDirPart = async (
   dir: string,
   out: string,
   how: "webpack" | "esbuild",
-  { installed = false }: { installed?: boolean } = {},
+  { installed = false, modern = false }: { installed?: boolean; modern?: boolean } = {},
 ): Promise<string> => {
   if (!installed) await install(dir);
   if (how === "esbuild") {
@@ -227,7 +279,11 @@ export const buildDirPart = async (
   const dist = path.join(dir, "dist/web");
   const mode = fs.existsSync(path.join(dist, SCRIPTS[name]))
     ? "cached"
-    : await webpack(dir);
+    : await webpack(dir, { modern });
+  // ClipCC names its VM bundle clipcc-vm.js: copy it to the usual name.
+  const want = path.join(dist, SCRIPTS[name]);
+  const clipcc = path.join(dist, SCRIPTS[name].replace(/^scratch/, "clipcc"));
+  if (!fs.existsSync(want) && fs.existsSync(clipcc)) fs.copyFileSync(clipcc, want);
   fs.cpSync(dist, out, { recursive: true });
   return mode;
 };
