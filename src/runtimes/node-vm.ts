@@ -8,7 +8,10 @@ export type NodeVmId =
   | "turbowarp"
   | "mistwarp"
   | "nitrobolt"
-  | "penguinmod";
+  | "penguinmod"
+  | "gandi"
+  | "penguinmod-port"
+  | "clipcc";
 
 export const nodeVmRuntime = (
   id: NodeVmId,
@@ -68,11 +71,12 @@ export const gitPinnedVersion = async (dep: string) => {
 export const forkStack = (
   id: string,
   prebuilt: { svg?: boolean; storage?: boolean } = {},
+  { modern = false }: { modern?: boolean } = {},
 ): WebRecipe => ({
   id,
   parts: [
-    { name: "vm", dep: `${id}-vm`, how: "webpack" },
-    { name: "render", dep: `${id}-render`, how: "webpack" },
+    { name: "vm", dep: `${id}-vm`, how: "webpack", ...(modern && { modern }) },
+    { name: "render", dep: `${id}-render`, how: "webpack", ...(modern && { modern }) },
     {
       name: "svg",
       dep: `${id}-svg-renderer`,
