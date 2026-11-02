@@ -4,7 +4,7 @@ ARG GO_VERSION=1
 
 FROM golang:${GO_VERSION}-trixie AS osl
 ARG OSL_REPO=https://git.rotur.dev/osl/.go
-ARG OSL_REF=c24c464307ca00ff93fa7f5c88c55f5431abd597
+ARG OSL_REF=b60485a8c78d30eb6c7f515452963c239f334b4e
 RUN git init -q /osl && cd /osl && git remote add origin "$OSL_REPO" \
  && git fetch -q --depth 1 origin "$OSL_REF" && git checkout -q FETCH_HEAD \
  && go build -o /usr/local/bin/osl .

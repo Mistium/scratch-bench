@@ -21,7 +21,7 @@ services:
         BENCH_REPO_SHA: ${BENCH_REPO_SHA:-}
         BENCH_PARITY_SHA: ${BENCH_PARITY_SHA:-}
         BENCH_CRON: ${BENCH_CRON:-0 3 * * *}
-        OSL_REF: ${OSL_REF:-c24c464307ca00ff93fa7f5c88c55f5431abd597}
+        OSL_REF: ${OSL_REF:-b60485a8c78d30eb6c7f515452963c239f334b4e}
     image: scratch-bench
     init: true
     restart: unless-stopped
