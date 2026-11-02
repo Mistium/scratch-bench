@@ -75,6 +75,8 @@ export interface HistorySpec {
   latestOnly?: SuiteId[];
   variants?: Variant[] | ((pin: Pin) => Promise<Variant[]>);
   parts?: HistoryPart[];
+  /** Build the web parts the way the nightly does for runtimes with modern syntax (see WebPart.modern). */
+  modern?: boolean;
   custom?: {
     resolve(date: string, suite: SuiteId): Promise<Pin | null>;
     build(pin: Pin, suite: SuiteId): Promise<HistoricLaunch>;

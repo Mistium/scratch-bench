@@ -17,6 +17,7 @@ export const penguinmodPort = nodeVmRuntime(
     variants: COMPILER_VARIANTS,
     history: {
       variants: COMPILER_VARIANTS,
+      modern: true,
       // When the penguinmod-port organisation's repos were created.
       since: { performance: "2025-11-16", parity: "2025-11-16" },
       parts: [
