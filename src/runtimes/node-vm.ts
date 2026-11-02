@@ -10,7 +10,8 @@ export type NodeVmId =
   | "gandi"
   | "nitrobolt"
   | "penguinmod"
-  | "penguinmod-port";
+  | "penguinmod-port"
+  | "clipcc";
 
 export const nodeVmRuntime = (
   id: NodeVmId,

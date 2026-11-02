@@ -62,7 +62,7 @@ export const writeResult = (a: {
   const dir = dirFor(a.date, a.resultsDir);
   const file = path.join(
     dir,
-    resultFileName(a.suite, (a.rt.resultsAs ?? a.rt).id, a.variant ?? null),
+    resultFileName(a.suite, a.rt.id, a.variant ?? null),
   );
   const timestamp = timestampFor(a.date);
 
@@ -85,8 +85,8 @@ export const writeResult = (a: {
     suite: { id: a.suite, source_hash: a.suiteSourceHash },
     repo: repoInfo(),
     runtime: {
-      id: (a.rt.resultsAs ?? a.rt).id,
-      name: (a.rt.resultsAs ?? a.rt).name,
+      id: a.rt.id,
+      name: a.rt.name,
       kind: a.rt.kind,
       version,
       detail,

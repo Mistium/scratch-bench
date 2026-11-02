@@ -90,7 +90,7 @@ export const resolvePin = async (
         shared: part.shared,
       });
     } else {
-      const version = await source.npmVersion(part.npm, date);
+      const version = part.version ?? await source.npmVersion(part.npm, date, part.prerelease);
       if (!version) return null;
       parts.push({ npm: part.npm, version, provides: provides as string });
     }

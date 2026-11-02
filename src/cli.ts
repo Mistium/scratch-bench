@@ -237,8 +237,8 @@ const runSuite = async (
     schema_version: 1 as const,
     suite: { id: suite.id, source_hash: built.hash },
     runtime: {
-      id: (rt.resultsAs ?? rt).id,
-      name: (rt.resultsAs ?? rt).name,
+      id: rt.id,
+      name: rt.name,
       kind: rt.kind,
       version: setup instanceof Error ? "unknown" : setup.version,
       detail: setup instanceof Error ? {} : setup.detail ?? {},

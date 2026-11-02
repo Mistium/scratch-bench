@@ -181,7 +181,7 @@ export const fixLockfiles = (dir: string) => {
 // Publish times of each registry package's versions, from the npm registry, kept on disk between runs.
 const REGISTRY_CACHE = path.join(CACHE, "registry-times");
 const publishTimes = new Map<string, Promise<Record<string, string> | null>>();
-const timesOf = (name: string) => {
+export const timesOf = (name: string) => {
   let times = publishTimes.get(name);
   if (!times) {
     const file = path.join(REGISTRY_CACHE, `${encodeURIComponent(name)}.json`);
@@ -263,11 +263,12 @@ export const install = async (dir: string) => {
   fixLockfiles(dir);
   pinToLockfile(dir);
   await pinToDate(dir);
-  const lock = path.join(dir, "package-lock.json");
+  const locks = ["package-lock.json", "yarn.lock"].map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
   await run(["bun", "install", "--ignore-scripts"], dir).catch(async (e) => {
-    // Bun's migration of an npm lockfile can fail integrity checks (e.g. on git tarballs); resolve without it.
-    if (!fs.existsSync(lock)) throw e;
-    fs.rmSync(lock);
+    // Bun's migration of an npm lockfile can fail integrity checks (e.g. on git tarballs), and a stale yarn.lock can
+    // miss a dependency (ClipCC's scratch-render lacks its clipcc-vm devDependency); resolve without them.
+    if (!locks.length) throw e;
+    for (const f of locks) fs.rmSync(f);
     await run(["bun", "install", "--ignore-scripts"], dir);
   });
   fs.writeFileSync(path.join(dir, "node_modules/.bench-installed"), "");
@@ -425,6 +426,12 @@ export const buildDirPart = async (
     ? "cached"
     : await webpack(dir);
   fs.cpSync(dist, out, { recursive: true });
+  // Forks that renamed their bundle (clipcc-vm.js, clipcc-render.js): serve it under the usual name.
+  const want = path.join(out, SCRIPTS[name]);
+  const renamed = fs.existsSync(want) ? undefined : fs.readdirSync(out).find((f) =>
+    f.endsWith(SCRIPTS[name].replace(/^scratch/, "")) && !f.includes(".min.")
+  );
+  if (renamed) fs.copyFileSync(path.join(out, renamed), want);
   return mode;
 };
 

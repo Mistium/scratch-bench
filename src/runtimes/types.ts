@@ -51,6 +51,10 @@ export interface GitPart extends PartWindow {
 export interface NpmPart extends PartWindow {
   npm: string;
   provides: string;
+  /** Always this version, for a runtime that pins it, instead of the release current on each date. */
+  version?: string;
+  /** Take the newest release on each date even if it is a prerelease (Scratch's packages long published only those). */
+  prerelease?: boolean;
 }
 
 export type HistoryPart = GitPart | NpmPart;
@@ -99,6 +103,4 @@ export interface Runtime {
   headless?: Launcher;
   gui?: Launcher;
   history?: HistorySpec;
-  /** Report results as this runtime instead (its VM modes become extra modes of that runtime). */
-  resultsAs?: { id: string; name: string };
 }

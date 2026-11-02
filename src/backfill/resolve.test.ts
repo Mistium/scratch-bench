@@ -12,8 +12,9 @@ const source: Source = {
     if (repo === "Org/new-repo" && date < "2026-01-01") return null;
     return `${repo.replace(/\W/g, "").slice(-6)}@${date}`;
   },
-  async npmVersion(pkg, date) {
-    return date < "2025-09-01" ? null : `1.0.${date.slice(5, 7)}`;
+  async npmVersion(pkg, date, prerelease) {
+    if (date < "2025-09-01") return null;
+    return `1.0.${date.slice(5, 7)}${prerelease ? "-pre" : ""}`;
   },
 };
 
@@ -104,6 +105,25 @@ describe("resolvePin fallback", () => {
 });
 
 describe("resolvePin", () => {
+  test("npm parts: a fixed version, or prereleases by date, each in its window", async () => {
+    const pinned: Runtime = {
+      ...fork,
+      history: {
+        since: { performance: "2025-08-01", parity: "2025-08-01" },
+        parts: [
+          { git: "Org/vm", provides: { vm: "." } },
+          { npm: "svg", provides: "svg", until: "2026-02-28", prerelease: true },
+          { npm: "svg", provides: "svg", since: "2026-03-01", version: "9.9.9" },
+        ],
+      },
+    };
+    const svg = async (date: string) =>
+      (await resolvePin(pinned, "parity", date, source, { latest: false }))?.parts
+        .find((p) => p.provides === "svg");
+    await expect(svg("2026-01-15")).resolves.toMatchObject({ version: "1.0.01-pre" });
+    await expect(svg("2026-05-01")).resolves.toMatchObject({ version: "9.9.9" });
+  });
+
   test("parity pins every part, performance only the vm", async () => {
     const parity = await resolvePin(fork, "parity", "2026-05-01", source, {
       latest: false,

@@ -28,7 +28,17 @@ window.start = async (kind, scripts, compiler = true) => {
         "/audio.js",
       ]
     ) await loadScript(src);
-    vm = new VirtualMachine();
+    window.ScratchRender ??= window.ClipCCRender; // ClipCC names its renderer bundle differently
+    // ClipCC takes a config object (the others ignore it); stand in for the extension manager its GUI supplies.
+    vm = new VirtualMachine({
+      extensionManager: {
+        emitEvent() {},
+        emitEventToAll() {},
+        getExtensionLoadOrder: (ids) => ids,
+        loadExtensionsWithMode: (ids) =>
+          ids.forEach((id) => vm.extensionManager.isExtensionLoaded(id) || vm.extensionManager.loadExtensionIdSync(id)),
+      },
+    });
     // Some VMs' code expects the editor's global (penguinmod-port refers to vm directly).
     window.vm = vm;
     if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {

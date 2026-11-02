@@ -31,6 +31,7 @@ const VMS = {
   nitrobolt: { pkg: "nitrobolt-vm", compiler: true },
   penguinmod: { pkg: "penguinmod-vm", compiler: true },
   "penguinmod-port": { pkg: "penguinmod-port-vm", compiler: true },
+  clipcc: { pkg: "clipcc-vm", compiler: false },
 };
 
 const [vmName, file] = process.argv.slice(2);
@@ -74,7 +75,8 @@ if (typeof globalThis.localStorage === "undefined") {
 // PenguinMod's interpreted "broadcast and wait" sets `broadcastVar.isSent` on an undeclared name (a typo for
 // util.stackFrame.broadcastVar), which throws and ends the run. A global of that name makes the stray write harmless.
 globalThis.broadcastVar ??= {};
-const vmPath = process.env.BENCH_VM_DIR ? vmEntry(process.env.BENCH_VM_DIR) : VMS[vmName].pkg;
+// Git-installed packages (ClipCC) are source checkouts too.
+const vmPath = vmEntry(process.env.BENCH_VM_DIR ?? `${require.resolve(`${VMS[vmName].pkg}/package.json`).slice(0, -"/package.json".length)}`);
 // Some older VMs expect a browser at load time (e.g. DOMPurify only sets itself up when window.document exists). Only
 // then add a linkedom window and load again from scratch: modern VMs pick code paths by whether a window exists.
 const loadVm = () => {
@@ -94,9 +96,38 @@ const loadVm = () => {
 const VirtualMachine = loadVm();
 fs.readFileSync = readFileSync;
 
-const vm = new VirtualMachine();
+// ClipCC takes a config object (the others ignore it) whose extension manager loads a project's extensions; its GUI
+// supplies one, so stand in with one that loads Scratch's built-in extensions.
+const ccExtensions = {
+  emitEvent() {},
+  emitEventToAll() {},
+  getExtensionLoadOrder: (ids) => ids,
+  loadExtensionsWithMode: (ids) =>
+    ids.forEach((id) => vm.extensionManager.isExtensionLoaded(id) || vm.extensionManager.loadExtensionIdSync(id)),
+};
+const vm = new VirtualMachine({ extensionManager: ccExtensions });
 // Some VMs' code expects the editor's global (penguinmod-port refers to vm directly).
 globalThis.vm = vm;
+// ClipCC's dispose (run on every project load) clears the renderer's skins without checking there is a renderer.
+if (vmName === "clipcc") {
+  // It also gives every sprite a browser Audio element, which it only ever pauses and rewinds.
+  globalThis.Audio ??= class {
+    pause() {}
+    play() {
+      return Promise.resolve();
+    }
+  };
+  const dispose = vm.runtime.dispose;
+  vm.runtime.dispose = function () {
+    if (this.renderer) return dispose.call(this);
+    this.renderer = { _allSkins: [] };
+    try {
+      return dispose.call(this);
+    } finally {
+      this.renderer = undefined;
+    }
+  };
+}
 if (VMS[vmName].compiler && typeof vm.setCompilerOptions === "function") {
   vm.setCompilerOptions({
     enabled: process.env.BENCH_COMPILER !== "0",

@@ -1,8 +1,10 @@
 import { forkphorus } from "./forkphorus.ts";
+import { clipcc } from "./clipcc.ts";
 import { gandi } from "./gandi.ts";
 import { mistwarp } from "./mistwarp.ts";
 import { nitrobolt } from "./nitrobolt.ts";
 import { oscratchl } from "./oscratchl.ts";
+import { leopard } from "./leopard.ts";
 import { penguinmod } from "./penguinmod.ts";
 import { penguinmodPort } from "./penguinmod-port.ts";
 import { scratch } from "./scratch.ts";
@@ -21,6 +23,8 @@ export const RUNTIMES: Runtime[] = [
   penguinmodPort,
   scratchEverywhere,
   oscratchl,
+  clipcc,
+  leopard,
 ];
 
 export const selectRuntimes = (ids: string[] | undefined): Runtime[] => {

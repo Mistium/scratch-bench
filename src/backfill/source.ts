@@ -9,7 +9,7 @@ export interface Source {
     date: string,
     opts: { branch?: string; paths?: string[] },
   ): Promise<string | null>;
-  npmVersion(pkg: string, date: string): Promise<string | null>;
+  npmVersion(pkg: string, date: string, prerelease?: boolean): Promise<string | null>;
   pathExists?(repo: string, commit: string, path: string): Promise<boolean>;
   /** Up to n commits before `commit` in its history, newest first. */
   gitAncestors?(repo: string, commit: string, n: number): Promise<string[]>;
@@ -167,7 +167,7 @@ export const realSource: Source = {
     });
   },
 
-  async npmVersion(pkg, date) {
+  async npmVersion(pkg, date, prerelease) {
     const times = await cached(`npm|${pkg}`, false, async () => {
       const res = await fetch(
         `https://registry.npmjs.org/${pkg.replace("/", "%2F")}`,
@@ -184,7 +184,7 @@ export const realSource: Source = {
     const published = Object.entries(times)
       .filter(([, t]) => t <= until)
       .sort((a, b) => a[1].localeCompare(b[1]));
-    const stable = published.filter(([v]) => STABLE.test(v));
+    const stable = prerelease ? [] : published.filter(([v]) => STABLE.test(v));
     return (stable.at(-1) ?? published.at(-1))?.[0] ?? null;
   },
 
