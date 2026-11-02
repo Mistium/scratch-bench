@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MAIN_BENCHMARKS } from "#shared/benchmarks";
 
-const { host, baseline, mainMode: mode } = useBenchState();
+const { host, baseline, mainMode: mode, log } = useBenchState();
 const { data: meta } = await useMetaData();
 const { data: latest } = await useLatestData(host);
 const { nameOf } = useRuntimes(meta, baseline);
@@ -26,9 +26,12 @@ const cards = computed(() =>
     );
     const lo = Math.log(Math.min(...vals));
     const hi = Math.log(Math.max(...vals));
+    const top = Math.max(...vals);
     // Position on a log scale between the slowest and fastest runtime, so a 300x gap still shows the small ones.
     const position = (v: number | null) => (v == null || v <= 0
       ? 0
+      : !log.value
+      ? v / top
       : hi === lo
       ? 1
       : 0.04 + 0.96 * ((Math.log(v) - lo) / (hi - lo)));
@@ -47,7 +50,7 @@ const cards = computed(() =>
       <ModeToggle scope="main" />
     </header>
     <p
-      class="panel__subtitle">Whole programs and the scheduler, the closest to how projects really run. Bars use a logarithmic scale.</p>
+      class="panel__subtitle">Whole programs and the scheduler, the closest to how projects really run. Bars use a {{ log ? 'logarithmic' : 'linear' }} scale.</p>
 
     <div class="card-grid">
       <article v-for="c in cards" :key="c.bench.id" class="bench-card">

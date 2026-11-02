@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { data: meta } = await useMetaData();
+const { log } = useBenchState();
 useHead({ title: "ScratchBench" });
 </script>
 
@@ -14,6 +15,10 @@ useHead({ title: "ScratchBench" });
         <section id="overview" class="overview"
           aria-labelledby="overview-title">
           <h2 id="overview-title" class="overview__title">Overview</h2>
+          <label class="field field--check">
+            <input v-model="log" type="checkbox" class="field__checkbox" />
+            <span class="field__label">Logarithmic charts</span>
+          </label>
           <div class="overview__grid">
             <Leaderboard />
             <CategoryScores />

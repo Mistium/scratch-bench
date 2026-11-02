@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { host, baseline, weights, trendRange: range } = useBenchState();
+const { host, baseline, weights, trendRange: range, log } = useBenchState();
 const { data: meta } = await useMetaData();
 const { data: scores } = await useScoreData(host, weights);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
@@ -62,7 +62,7 @@ const option = computed(() => {
     legend: { ...chart.base().legend, bottom: 28 },
     xAxis: { type: "time", ...chart.axis() },
     yAxis: {
-      type: "log",
+      type: log.value ? "log" : "value",
       ...chart.axis(),
       axisLabel: {
         ...chart.axis().axisLabel,

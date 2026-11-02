@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CATEGORIES, CATEGORY_IDS } from "#shared/benchmarks";
 
-const { host, baseline, weights } = useBenchState();
+const { host, baseline, weights, log } = useBenchState();
 const { data: meta } = await useMetaData();
 const { data: scores } = await useScoreData(host, weights);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
@@ -41,7 +41,7 @@ const tier = (c: string, x: number | null | undefined) => {
 const position = (c: string, x: number | null | undefined) => {
   const top = best.value[c];
   if (x == null || !top) return 0;
-  return Math.max(0, 1 + Math.log10(x / top) / 3);
+  return log.value ? Math.max(0, 1 + Math.log10(x / top) / 3) : x / top;
 };
 
 const option = computed(() => {
@@ -116,14 +116,15 @@ const option = computed(() => {
     <header class="panel__header">
       <h2 id="category-title" class="panel__title">Performance by category</h2>
       <p class="panel__subtitle">
-        The radar shows each runtime against the best one in every category, on a logarithmic scale. The table has the scores,
+        The radar shows each runtime against the best one in every category, on a {{ log ? 'logarithmic' : 'linear' }} scale. The table has the scores,
         with each category's weight.
       </p>
     </header>
 
     <div class="category-scores__body">
       <ChartBase :option="option"
-        label="Radar chart of each runtime's performance in every category, relative to the best, logarithmic scale" />
+        
+        :label="`Radar chart of each runtime's performance in every category, relative to the best, ${log ? 'logarithmic' : 'linear'} scale`" />
 
       <div class="table-scroll">
         <table class="table">

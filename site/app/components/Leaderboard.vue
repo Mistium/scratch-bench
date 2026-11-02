@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CATEGORIES, CATEGORY_IDS } from "#shared/benchmarks";
 
-const { host, baseline, weights } = useBenchState();
+const { host, baseline, weights, log } = useBenchState();
 const { data: meta } = await useMetaData();
 const { data: scores } = await useScoreData(host, weights);
 const { data: latest } = await useLatestData(host);
@@ -52,8 +52,8 @@ const option = computed(() => {
       formatter: (p: any) => `${p.name}: ${fmtOps(p.value)}`,
     },
     xAxis: {
-      type: "log",
-      min: 10 ** (Math.floor(Math.log10(min)) - 1),
+      type: log.value ? "log" : "value",
+      min: log.value ? 10 ** (Math.floor(Math.log10(min)) - 1) : 0,
       ...chart.axis(),
       axisLabel: {
         ...chart.axis().axisLabel,
@@ -101,7 +101,8 @@ const option = computed(() => {
     </header>
 
     <ChartBase :option="option" small
-      label="Overall performance of each runtime, logarithmic scale" />
+      
+      :label="`Overall performance of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
 
     <div class="table-scroll">
       <table class="table leaderboard__table">
