@@ -32,7 +32,8 @@ const option = computed(() => {
         type: chart.lineType(id),
       },
       itemStyle: { color: chart.runtimeColor(id, indexOf(id)) },
-      data: s!.timestamps.slice(first).map((t, i) => [t, v.total[first + i]]),
+      data: s!.timestamps.slice(first).map((t, i) => [t, v.total[first + i]])
+        .filter(([, total]) => total != null),
       markLine: n === 0 && revisions.length
         ? {
           silent: true,
