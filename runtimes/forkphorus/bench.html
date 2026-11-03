@@ -16,13 +16,19 @@ const loadScript = (src) =>
 window.start = async (scripts) => {
   for (const src of scripts) await loadScript(src);
   const player = new P.player.Player();
-  player.setOptions({ turbo: false, focusOnLoad: false, autoplayPolicy: "always" });
+  player.setOptions({
+    turbo: false,
+    focusOnLoad: false,
+    autoplayPolicy: "always",
+  });
   document.getElementById("player").appendChild(player.root);
   const project = await (await fetch("/__bench.sb3")).arrayBuffer();
   // The player reports load failures through its events rather than by rejecting, so wait for one of them.
   await new Promise((resolve, reject) => {
     player.onload.subscribe(resolve);
-    player.onerror.subscribe((e) => reject(new Error("load failed: " + (e && (e.message || e)))));
+    player.onerror.subscribe((e) =>
+      reject(new Error("load failed: " + (e && (e.message || e))))
+    );
     player.loadProjectFromBuffer(project, "sb3").catch(reject);
   });
   player.triggerGreenFlag();
@@ -35,7 +41,9 @@ window.start = async (scripts) => {
   setInterval(() => {
     const list = stage.lists.output;
     if (list) {
-      while (printed < list.length) console.log("[PROJECT] " + String(list[printed++]));
+      while (printed < list.length) {
+        console.log("[PROJECT] " + String(list[printed++]));
+      }
     }
     if (stage.runtime.queue.some(Boolean)) idleSince = null;
     else {

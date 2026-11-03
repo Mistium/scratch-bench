@@ -4,9 +4,11 @@ const { data: meta } = await useMetaData();
 const { data: latest } = await useLatestData(host);
 const { indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
+const shown = useShown();
 
 const rows = computed(() =>
   (latest.value?.runtimes ?? [])
+    .filter((r) => shown(r.id))
     .map((r) => ({
       id: r.id,
       name: r.name,
@@ -76,13 +78,11 @@ const memoryOption = computed(() => barOption("memory", fmtMb));
       <div class="resource-use__chart">
         <h3 class="resource-use__title">Startup time</h3>
         <ChartBase :option="startupOption" small
-          
           :label="`Startup time of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
       </div>
       <div class="resource-use__chart">
         <h3 class="resource-use__title">Peak memory</h3>
         <ChartBase :option="memoryOption" small
-          
           :label="`Peak memory of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
       </div>
     </div>

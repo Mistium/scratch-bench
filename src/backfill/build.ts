@@ -157,7 +157,7 @@ const buildBundle = async (
           repo.dir(sub),
           path.join(bundle, name),
           how,
-          { installed: repo.workspace, modern: rt.history?.modern },
+          { installed: repo.workspace },
         );
         have.add(name);
       }

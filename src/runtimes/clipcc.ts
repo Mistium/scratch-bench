@@ -7,7 +7,10 @@ export const clipcc = nodeVmRuntime(
   "ClipCC",
   async () => {
     const { version, commit } = await gitPinnedVersion("clipcc-vm");
-    return { version, detail: { "vm-commit": commit, repo: "Clipteam/clipcc-vm" } };
+    return {
+      version,
+      detail: { "vm-commit": commit, repo: "Clipteam/clipcc-vm" },
+    };
   },
   { web: async () => forkStack("clipcc", { svg: true, storage: true }) },
 );

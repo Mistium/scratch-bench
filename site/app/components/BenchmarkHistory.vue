@@ -3,7 +3,8 @@ import { BENCHMARK_BY_ID } from "#shared/benchmarks";
 
 const props = defineProps<{ id: string }>();
 
-const { host, baseline, mode, log, hidden, range } = useBenchState();
+const { host, baseline, mode, log, range } = useBenchState();
+const shown = useShown();
 const { data: meta } = await useMetaData();
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
@@ -20,9 +21,7 @@ const historicalOption = computed(() => {
   const h = history.value;
   if (!h) return {};
   const baseSeries = h.runtimes[baseline.value]?.bench[props.id];
-  const visible = Object.keys(h.runtimes).filter((id) =>
-    !hidden.value.includes(id)
-  );
+  const visible = Object.keys(h.runtimes).filter((id) => shown(id));
   const y = (id: string, i: number): number | null => {
     const v = h.runtimes[id]?.bench[props.id]?.[i];
     if (v == null) return null;

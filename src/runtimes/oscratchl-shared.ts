@@ -47,7 +47,9 @@ const compiled = (bin: string, sb3: string, runtimeSource?: string): string => {
   ], { cwd: path.dirname(bin), stdout: "pipe", stderr: "pipe" });
   if (r.exitCode !== 0 || !fs.existsSync(tmp)) {
     fs.rmSync(tmp, { force: true });
-    const why = `${r.stderr}\n${r.stdout}`.trim().split("\n").slice(-6).join(" | ");
+    const why = `${r.stderr}\n${r.stdout}`.trim().split("\n").slice(-6).join(
+      " | ",
+    );
     throw new Error(`oscratchl --compile failed: ${why}`);
   }
   fs.renameSync(tmp, out);
@@ -61,7 +63,9 @@ const program = (
   runtimeSource: string | undefined,
   variant: Variant | null | undefined,
 ): string[] =>
-  variant?.id === "interpreter" ? [bin, sb3] : [compiled(bin, sb3, runtimeSource)];
+  variant?.id === "interpreter"
+    ? [bin, sb3]
+    : [compiled(bin, sb3, runtimeSource)];
 
 export const headlessCommand = (
   bin: string,
@@ -69,7 +73,11 @@ export const headlessCommand = (
   runtimeSource?: string,
   variant?: Variant | null,
 ): Command => ({
-  cmd: [...program(bin, sb3, runtimeSource, variant), "--headless", HEADLESS_FRAMES],
+  cmd: [
+    ...program(bin, sb3, runtimeSource, variant),
+    "--headless",
+    HEADLESS_FRAMES,
+  ],
   cwd: path.dirname(bin),
   projectLine: PROJECT_LINE,
 });

@@ -25,8 +25,7 @@ import type { Runtime, SetupInfo, Variant } from "./types.ts";
 // to use the source checkout and CMake build instead, or XYO_BIN to use a local binary.
 
 const REPO = process.env.XYO_REPO ?? "https://github.com/pnsk-lab/xyo-cpp.git";
-const RELEASE_API =
-  process.env.XYO_RELEASE_API ??
+const RELEASE_API = process.env.XYO_RELEASE_API ??
   "https://api.github.com/repos/pnsk-lab/xyo-cpp/releases/latest";
 const CLONE_DIR = path.join(RUNTIME_DIR, "xyo-cpp");
 const CACHE_DIR = path.join(RUNTIME_DIR, "xyo-build");
@@ -77,9 +76,7 @@ const releaseBinary = async (offline: boolean): Promise<{
   version: string;
   detail: Record<string, string>;
 }> => {
-  const archiveName = process.arch === "x64"
-    ? "xyo-linux-x86_64.tar.gz"
-    : null;
+  const archiveName = process.arch === "x64" ? "xyo-linux-x86_64.tar.gz" : null;
   if (!archiveName) {
     throw new Error(
       `no xyo-cpp release asset for Linux architecture "${process.arch}"`,
@@ -136,7 +133,9 @@ const releaseBinary = async (offline: boolean): Promise<{
 
   log(`downloading xyo-cpp ${version}`);
   const archiveBytes = await download(archive.browser_download_url);
-  const sumsText = new TextDecoder().decode(await download(sums.browser_download_url));
+  const sumsText = new TextDecoder().decode(
+    await download(sums.browser_download_url),
+  );
   const expected = sumsText.match(
     new RegExp(`^([0-9a-fA-F]{64})\\s+\\*?${archiveName}$`, "m"),
   )?.[1]?.toLowerCase();
@@ -354,7 +353,9 @@ export const xyoCpp: Runtime = {
         "--porcelain",
         "--untracked-files=no",
       )).trim() !== "";
-      version = commit ? `${commit.slice(0, 7)}${dirty ? "-dirty" : ""}` : "unknown";
+      version = commit
+        ? `${commit.slice(0, 7)}${dirty ? "-dirty" : ""}`
+        : "unknown";
       detail.commit = commit || "unknown";
       detail.dirty = String(dirty);
       detail.src = src;

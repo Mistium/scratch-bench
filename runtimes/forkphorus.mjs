@@ -8,7 +8,9 @@ import { chromium } from "playwright-core";
 process.stdout.on("error", () => process.exit(0));
 const [dir, file] = process.argv.slice(2);
 if (!dir || !file || !fs.existsSync(path.join(dir, "phosphorus.dist.js"))) {
-  console.error("usage: node forkphorus.mjs <forkphorus checkout with phosphorus.dist.js> <project.sb3>");
+  console.error(
+    "usage: node forkphorus.mjs <forkphorus checkout with phosphorus.dist.js> <project.sb3>",
+  );
   process.exit(2);
 }
 const page = path.join(import.meta.dirname, "forkphorus/bench.html");
@@ -17,13 +19,22 @@ const pageScripts = (() => {
   for (const name of ["embed.html", "index.html"]) {
     const f = path.join(dir, name);
     if (!fs.existsSync(f)) continue;
-    const srcs = [...fs.readFileSync(f, "utf8").matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1])
-      .filter((s) => !/^(https?:)?\/\//.test(s) && !/studioview|analytics/.test(s));
+    const srcs = [
+      ...fs.readFileSync(f, "utf8").matchAll(/<script[^>]*\bsrc="([^"]+)"/g),
+    ].map((m) => m[1])
+      .filter((s) =>
+        !/^(https?:)?\/\//.test(s) && !/studioview|analytics/.test(s)
+      );
     if (srcs.some((s) => s.endsWith("phosphorus.dist.js"))) return srcs;
   }
   return ["phosphorus.dist.js"];
 })();
-const types = { ".js": "application/javascript", ".html": "text/html", ".json": "application/json", ".css": "text/css" };
+const types = {
+  ".js": "application/javascript",
+  ".html": "text/html",
+  ".json": "application/json",
+  ".css": "text/css",
+};
 
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);
@@ -36,10 +47,13 @@ const server = http.createServer((req, res) => {
     : path.join(dir, path.normalize(url).replace(/^(\.\.[/\\])+/, ""));
   fs.readFile(p, (e, d) => {
     if (e) res.writeHead(404).end();
-    else res.writeHead(200, { "Content-Type": types[path.extname(p)] || "application/octet-stream" }).end(d);
+    else {res.writeHead(200, {
+        "Content-Type": types[path.extname(p)] || "application/octet-stream",
+      }).end(d);}
   });
 }).listen(0, "127.0.0.1", async () => {
-  const exe = process.env.CHROME || (fs.existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
+  const exe = process.env.CHROME ||
+    (fs.existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
   const browser = await chromium.launch({
     executablePath: exe,
     args: [
@@ -65,7 +79,9 @@ const server = http.createServer((req, res) => {
     const n = (repeats.get(e.message) ?? 0) + 1;
     repeats.set(e.message, n);
     if (n >= 200 && !printed) {
-      console.error(`stopping: "${e.message}" was thrown ${n} times before any result`);
+      console.error(
+        `stopping: "${e.message}" was thrown ${n} times before any result`,
+      );
       browser.close().catch(() => {}).finally(() => process.exit(1));
     }
   });

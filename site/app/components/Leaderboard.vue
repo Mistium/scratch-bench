@@ -7,6 +7,7 @@ const { data: scores } = await useScoreData(host, weights);
 const { data: latest } = await useLatestData(host);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
+const shown = useShown();
 
 const rows = computed(() => {
   const s = scores.value;
@@ -27,6 +28,7 @@ const rows = computed(() => {
   });
   const base = mapped.find((r) => r.id === baseline.value)?.total ?? null;
   return mapped
+    .filter((r) => shown(r.id))
     .map((r) => ({
       ...r,
       speedup: r.total != null && base ? r.total / base : null,
@@ -40,7 +42,9 @@ const weightedUp = CATEGORY_IDS.filter((id) => CATEGORIES[id].weight > 1).map((
   id,
 ) => CATEGORIES[id].label);
 
-const chartHeight = computed(() => Math.max(224, ranked.value.length * 26 + 40));
+const chartHeight = computed(() =>
+  Math.max(224, ranked.value.length * 26 + 40)
+);
 
 const option = computed(() => {
   const values = ranked.value.map((r) => r.total!);

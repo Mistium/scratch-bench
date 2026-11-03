@@ -114,7 +114,9 @@ export const realSource: Source = {
     return cached(`exists|${repo}|${commit}|${p}`, true, async () => {
       try {
         await gh(
-          `repos/${repo}/contents/${p.split("/").map(encodeURIComponent).join("/")}?ref=${commit}`,
+          `repos/${repo}/contents/${
+            p.split("/").map(encodeURIComponent).join("/")
+          }?ref=${commit}`,
           'if type == "array" then "dir" else .type end',
         );
         return true;

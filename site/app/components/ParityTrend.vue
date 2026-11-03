@@ -3,6 +3,7 @@ const { host, baseline, parityRange: range } = useBenchState();
 const { data: meta } = await useMetaData();
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
+const shown = useShown();
 
 const from = ref<string | undefined>(undefined);
 const { data: history } = useHistory([], host, from);
@@ -19,7 +20,7 @@ const option = computed(() => {
   const first = Math.max(0, cut ? h!.timestamps.findIndex((t) => t >= cut) : 0);
   const stamps = h?.timestamps.slice(first) ?? [];
   const series = Object.entries(h?.runtimes ?? {})
-    .filter(([, r]) => r.parity_total.some((t) => t != null))
+    .filter(([id, r]) => shown(id) && r.parity_total.some((t) => t != null))
     .map(([id, r]) => {
       const color = chart.runtimeColor(id, indexOf(id));
       const point = (i: number) => {

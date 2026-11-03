@@ -11,30 +11,33 @@ useHead({ title: "ScratchBench" });
     <main class="page__main">
       <EmptyState v-if="!meta || meta.runCount === 0" />
 
-      <template v-else>
-        <section id="overview" class="overview"
-          aria-labelledby="overview-title">
-          <h2 id="overview-title" class="overview__title">Overview</h2>
-          <label class="field field--check">
-            <input v-model="log" type="checkbox" class="field__checkbox" />
-            <span class="field__label">Logarithmic charts</span>
-          </label>
-          <div class="overview__grid">
-            <Leaderboard />
-            <CategoryScores />
-          </div>
-          <ScoreTrend />
-          <ParityTrend />
-          <MainBenchmarks />
-          <div class="overview__grid">
-            <ResourceUse />
-            <ParitySummary />
-          </div>
-          <ScoringInfo />
-        </section>
+      <div v-else class="page__layout">
+        <div class="page__content">
+          <section id="overview" class="overview"
+            aria-labelledby="overview-title">
+            <h2 id="overview-title" class="overview__title">Overview</h2>
+            <label class="field field--check">
+              <input v-model="log" type="checkbox" class="field__checkbox" />
+              <span class="field__label">Logarithmic charts</span>
+            </label>
+            <div class="overview__grid">
+              <Leaderboard />
+              <CategoryScores />
+            </div>
+            <ScoreTrend />
+            <ParityTrend />
+            <MainBenchmarks />
+            <div class="overview__grid">
+              <ResourceUse />
+              <ParitySummary />
+            </div>
+            <ScoringInfo />
+          </section>
 
-        <AdvancedExplorer />
-      </template>
+          <AdvancedExplorer />
+        </div>
+        <RuntimeSidebar />
+      </div>
     </main>
 
     <footer class="site-footer">

@@ -5,7 +5,8 @@ const props = defineProps<
   { id: string; initialTab?: "current" | "historical" }
 >();
 
-const { host, baseline, mode, log, hidden, range } = useBenchState();
+const { host, baseline, mode, log, range } = useBenchState();
+const shown = useShown();
 const { data: meta } = await useMetaData();
 const { data: latest } = await useLatestData(host);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
@@ -16,7 +17,7 @@ const tab = ref<"current" | "historical">(props.initialTab ?? "current");
 const tabId = `tabs-${props.id}`;
 
 const runtimes = computed(() =>
-  (latest.value?.runtimes ?? []).filter((r) => !hidden.value.includes(r.id))
+  (latest.value?.runtimes ?? []).filter((r) => shown(r.id))
 );
 const baseMedian = computed(() =>
   latest.value?.runtimes.find((r) => r.id === baseline.value)

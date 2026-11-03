@@ -11,7 +11,11 @@ export type NodeVmId =
   | "penguinmod"
   | "gandi"
   | "penguinmod-port"
-  | "clipcc";
+  | "clipcc"
+  | "snailide"
+  | "electramod"
+  | "02engine"
+  | "codetorch";
 
 export const nodeVmRuntime = (
   id: NodeVmId,
@@ -71,12 +75,11 @@ export const gitPinnedVersion = async (dep: string) => {
 export const forkStack = (
   id: string,
   prebuilt: { svg?: boolean; storage?: boolean } = {},
-  { modern = false }: { modern?: boolean } = {},
 ): WebRecipe => ({
   id,
   parts: [
-    { name: "vm", dep: `${id}-vm`, how: "webpack", ...(modern && { modern }) },
-    { name: "render", dep: `${id}-render`, how: "webpack", ...(modern && { modern }) },
+    { name: "vm", dep: `${id}-vm`, how: "webpack" },
+    { name: "render", dep: `${id}-render`, how: "webpack" },
     {
       name: "svg",
       dep: `${id}-svg-renderer`,
@@ -90,3 +93,14 @@ export const forkStack = (
     { name: "audio", dep: `${id}-audio`, how: "esbuild" },
   ] satisfies WebPart[],
 });
+
+export const penguinForkStack = (id: string): WebRecipe => {
+  const base = forkStack("penguinmod");
+  return {
+    ...base,
+    id,
+    parts: base.parts.map((
+      p,
+    ) => (p.name === "vm" ? { ...p, dep: `${id}-vm` } : p)),
+  };
+};

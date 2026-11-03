@@ -9,13 +9,24 @@ import type { Command, HistoricLaunch, Pin, Runtime } from "./types.ts";
 // suites go through runtimes/forkphorus.mjs in headless Chromium. It commits its build (phosphorus.dist.js).
 const REPO = "https://github.com/forkphorus/forkphorus";
 const LIVE = path.join(RUNTIME_DIR, "forkphorus", "src");
-const historyDir = () => path.join(process.env.BENCH_BACKFILL_DIR ?? path.join(CACHE, "backfill"), "forkphorus");
+const historyDir = () =>
+  path.join(
+    process.env.BENCH_BACKFILL_DIR ?? path.join(CACHE, "backfill"),
+    "forkphorus",
+  );
 
 const git = (cwd: string, ...args: string[]) => run(["git", ...args], cwd);
 const gitOut = async (cwd: string, ...args: string[]): Promise<string> => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  const proc = Bun.spawn(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
   const out = await new Response(proc.stdout).text();
-  if ((await proc.exited) !== 0) throw new Error(`git ${args.join(" ")} failed`);
+  if ((await proc.exited) !== 0) {
+    throw new Error(`git ${args.join(" ")} failed`);
+  }
   return out.trim();
 };
 
@@ -40,9 +51,23 @@ const history = () =>
     const where = path.join(historyDir(), "mirror");
     if (!fs.existsSync(path.join(where, "HEAD"))) {
       fs.mkdirSync(historyDir(), { recursive: true });
-      await git(historyDir(), "clone", "--quiet", "--bare", "--filter=blob:none", REPO, where);
+      await git(
+        historyDir(),
+        "clone",
+        "--quiet",
+        "--bare",
+        "--filter=blob:none",
+        REPO,
+        where,
+      );
     } else {
-      await git(where, "fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*");
+      await git(
+        where,
+        "fetch",
+        "--quiet",
+        "origin",
+        "+refs/heads/*:refs/heads/*",
+      );
     }
     return where;
   })().catch((e) => {
@@ -59,9 +84,21 @@ export const forkphorus: Runtime = {
   kind: "node",
   async setup({ offline }) {
     if (!fs.existsSync(path.join(LIVE, ".git"))) {
-      if (offline) throw new Error("no cached forkphorus clone; run without --offline once");
+      if (offline) {
+        throw new Error(
+          "no cached forkphorus clone; run without --offline once",
+        );
+      }
       fs.mkdirSync(path.dirname(LIVE), { recursive: true });
-      await git(path.dirname(LIVE), "clone", "--quiet", "--depth", "1", REPO, LIVE);
+      await git(
+        path.dirname(LIVE),
+        "clone",
+        "--quiet",
+        "--depth",
+        "1",
+        REPO,
+        LIVE,
+      );
     } else if (!offline) {
       await git(LIVE, "fetch", "--quiet", "--depth", "1", "origin");
       await git(LIVE, "reset", "--quiet", "--hard", "origin/HEAD");
@@ -78,8 +115,17 @@ export const forkphorus: Runtime = {
     custom: {
       async resolve(date): Promise<Pin | null> {
         const repo = await history();
-        const sha = await gitOut(repo, "rev-list", "-1", "--first-parent", `--before=${endOfDay(date)}`, "HEAD");
-        return sha ? { parts: [], custom: { version: sha.slice(0, 7), sha } } : null;
+        const sha = await gitOut(
+          repo,
+          "rev-list",
+          "-1",
+          "--first-parent",
+          `--before=${endOfDay(date)}`,
+          "HEAD",
+        );
+        return sha
+          ? { parts: [], custom: { version: sha.slice(0, 7), sha } }
+          : null;
       },
       async build(pin): Promise<HistoricLaunch> {
         const sha = pin.custom!.sha!;
@@ -88,7 +134,11 @@ export const forkphorus: Runtime = {
           fs.rmSync(dir, { recursive: true, force: true });
           fs.mkdirSync(dir, { recursive: true });
           const repo = await history();
-          await run(["bash", "-c", `set -o pipefail; git -C '${repo}' archive ${sha} | tar -x -C '${dir}'`], historyDir());
+          await run([
+            "bash",
+            "-c",
+            `set -o pipefail; git -C '${repo}' archive ${sha} | tar -x -C '${dir}'`,
+          ], historyDir());
           await ensureBuilt(dir);
         }
         return { command: (sb3) => command(dir, sb3) };

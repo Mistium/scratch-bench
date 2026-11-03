@@ -20,6 +20,7 @@ const {
   open,
   log,
 } = useBenchState();
+const shown = useShown();
 const { data: meta } = await useMetaData();
 const { data: latest } = await useLatestData(host);
 const { nameOf } = useRuntimes(meta, baseline);
@@ -32,7 +33,7 @@ const runtimeIds = computed(() => {
     ...ranked.value,
     ...[...present].filter((id) => !ranked.value.includes(id)),
   ];
-  return ordered.filter((id) => present.has(id) && !hidden.value.includes(id));
+  return ordered.filter((id) => present.has(id) && shown(id));
 });
 
 const bestOf = (id: string): string | null => {
@@ -97,12 +98,11 @@ const toggleCategory = (id: string) => {
 const reset = () => {
   search.value = "";
   categories.value = [];
-  hidden.value = [];
   sort.value = "category";
   desc.value = false;
 };
 const filtered = computed(() =>
-  search.value !== "" || categories.value.length > 0 || hidden.value.length > 0
+  search.value !== "" || categories.value.length > 0
 );
 
 const sortOptions = [
@@ -140,8 +140,6 @@ const sortOptions = [
           {{ CATEGORIES[c].label }}
         </button>
       </div>
-
-      <RuntimeChips />
 
       <div class="toolbar__row">
         <label class="field">

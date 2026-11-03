@@ -34,7 +34,10 @@ window.start = async (kind, scripts, compiler = true) => {
           emitEventToAll() {},
           getExtensionLoadOrder: (ids) => ids,
           loadExtensionsWithMode: (ids) =>
-            ids.forEach((id) => vm.extensionManager.isExtensionLoaded(id) || vm.extensionManager.loadExtensionIdSync(id)),
+            ids.forEach((id) =>
+              vm.extensionManager.isExtensionLoaded(id) ||
+              vm.extensionManager.loadExtensionIdSync(id)
+            ),
         },
       })
       : new VirtualMachine();

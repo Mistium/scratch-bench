@@ -31,7 +31,11 @@ const VMS = {
   penguinmod: { pkg: "penguinmod-vm", compiler: true },
   gandi: { pkg: "gandi-vm", compiler: true },
   "penguinmod-port": { pkg: "penguinmod-port-vm", compiler: true },
-  // Installed from git, so "main" (an unbuilt dist/) is missing; its source runs under Node as it is.
+  snailide: { pkg: "snailide-vm", compiler: true },
+  electramod: { pkg: "electramod-vm", compiler: true },
+  "02engine": { pkg: "02engine-vm", compiler: true },
+  codetorch: { pkg: "codetorch-vm", compiler: true },
+  ampmod: { pkg: "ampmod-vm", compiler: true },
   clipcc: { pkg: "clipcc-vm/src/index.js", compiler: false },
 };
 
@@ -43,7 +47,7 @@ if (!(vmName in VMS) || !file) {
   process.exit(2);
 }
 
-if (vmName === "penguinmod") {
+if (["penguinmod", "snailide", "electramod"].includes(vmName)) {
   const { DOMParser } = require("linkedom");
   globalThis.DOMParser = DOMParser;
   globalThis.location = new URL("http://localhost/");
@@ -51,27 +55,36 @@ if (vmName === "penguinmod") {
 }
 
 if (vmName === "penguinmod-port") {
-  // It expects a browser's window and document while loading.
   const { parseHTML } = require("linkedom");
-  const dom = parseHTML("<!doctype html><html><head></head><body></body></html>");
-  Object.assign(globalThis, { window: dom.window, document: dom.document, DOMParser: dom.DOMParser });
-  // Some of its files mix require() with import/export (src/serialization/pm-compat.js): webpack accepts that, but Node
-  // loads them as ES modules, where require() does not exist. Compile those to CommonJS first.
+  const dom = parseHTML(
+    "<!doctype html><html><head></head><body></body></html>",
+  );
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.document,
+    DOMParser: dom.DOMParser,
+  });
   const Module = require("module");
   const { transformSync } = require("esbuild");
   const load = Module._extensions[".js"];
   Module._extensions[".js"] = (module, filename) => {
     const code = fs.readFileSync(filename, "utf8");
-    if (!/\brequire\(/.test(code) || !/^\s*(export|import)\s/m.test(code)) return load(module, filename);
-    module._compile(transformSync(code, { loader: "js", format: "cjs", target: "node18" }).code, filename);
+    if (!/\brequire\(/.test(code) || !/^\s*(export|import)\s/m.test(code)) {
+      return load(module, filename);
+    }
+    module._compile(
+      transformSync(code, { loader: "js", format: "cjs", target: "node18" })
+        .code,
+      filename,
+    );
   };
 }
+
+globalThis.broadcastVar ??= {};
 
 const VirtualMachine = require(process.env.BENCH_VM_DIR ?? VMS[vmName].pkg);
 fs.readFileSync = readFileSync;
 
-// ClipCC takes a config object whose extension manager loads a project's extensions (its GUI supplies one); stand in
-// with one that loads Scratch's built-in extensions. The other VMs take no arguments.
 const vm = vmName === "clipcc"
   ? new VirtualMachine({
     extensionManager: {
@@ -79,15 +92,15 @@ const vm = vmName === "clipcc"
       emitEventToAll() {},
       getExtensionLoadOrder: (ids) => ids,
       loadExtensionsWithMode: (ids) =>
-        ids.forEach((id) => vm.extensionManager.isExtensionLoaded(id) || vm.extensionManager.loadExtensionIdSync(id)),
+        ids.forEach((id) =>
+          vm.extensionManager.isExtensionLoaded(id) ||
+          vm.extensionManager.loadExtensionIdSync(id)
+        ),
     },
   })
   : new VirtualMachine();
-// The port's code refers to the editor's global `vm`.
 if (vmName === "penguinmod-port") globalThis.vm = vm;
 if (vmName === "clipcc") {
-  // ClipCC also gives every sprite a browser Audio element, which it only ever pauses and rewinds, and its dispose (run
-  // on every project load) clears the renderer's skins without checking there is a renderer.
   globalThis.Audio ??= class {
     pause() {}
   };
@@ -128,7 +141,7 @@ vm.loadProject(fs.readFileSync(file)).then(() => {
     } else {
       idleSince ??= Date.now();
       if (Date.now() - idleSince > 2000) {
-        vm.quit();
+        vm.quit?.();
         process.exit(0);
       }
     }

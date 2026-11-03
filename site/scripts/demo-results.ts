@@ -38,6 +38,8 @@ interface RuntimeSpec {
   failRate: number;
   parityTotal: number;
   parityPassed: number;
+  /** Has a compiler (the default mode) and an interpreter, reported as separate results. */
+  modes?: boolean;
 }
 
 const RUNTIMES: RuntimeSpec[] = [
@@ -181,6 +183,42 @@ const RUNTIMES: RuntimeSpec[] = [
   },
 ];
 
+const turbowarp = RUNTIMES.find((x) => x.id === "turbowarp")!;
+const derive = (
+  id: string,
+  name: string,
+  scale: number,
+  rss: number,
+  passed: number,
+  modes = true,
+): RuntimeSpec => ({
+  ...turbowarp,
+  id,
+  name,
+  speed: Object.fromEntries(
+    Object.entries(turbowarp.speed).map(([k, v]) => [k, v * scale]),
+  ) as RuntimeSpec["speed"],
+  rss,
+  bumpEvery: 20 + Math.round(scale * 10),
+  parityPassed: passed,
+  modes,
+});
+for (const x of RUNTIMES) {
+  if (
+    ["turbowarp", "mistwarp", "nitrobolt", "penguinmod", "scratch-everywhere"]
+      .includes(x.id)
+  ) x.modes = true;
+}
+RUNTIMES.push(
+  derive("snailide", "Snail IDE", 0.82, 520, 2040),
+  derive("electramod", "ElectraMod", 0.74, 500, 2010),
+  derive("02engine", "02engine", 0.93, 470, 2090),
+  derive("codetorch", "CodeTorch", 0.95, 480, 2080),
+  derive("ampmod", "AmpMod", 1.02, 450, 2100),
+  derive("clipcc", "ClipCC", 0.02, 430, 1900, false),
+  derive("gandi", "Gandi IDE", 0.7, 510, 2000),
+);
+
 const CATEGORY_MAGNITUDE: Record<CategoryId, number> = {
   loops: 4000,
   variables: 900,
@@ -271,117 +309,143 @@ export const generate = (
         parity_sha: "demo-parity",
       };
 
-      for (const rt of RUNTIMES) {
-        const down = r() < rt.failRate;
-        const bumps = Math.floor(night / rt.bumpEvery);
-        const version = `1.${bumps}.0+${
-          crypto.createHash("sha1").update(rt.id + bumps).digest("hex").slice(
-            0,
-            7,
-          )
-        }`;
-        const improve = 1 + 0.025 * bumps;
-        const base = {
-          schema_version: 1,
-          timestamp: stamp.toISOString(),
-          suite: { id: "performance", source_hash: suiteHash },
-          repo,
-          runtime: {
-            id: rt.id,
-            name: rt.name,
-            kind: rt.kind,
-            version,
-            detail: {},
-            launcher: rt.launcher,
-            display: rt.display,
-          },
-          host: hostFor(host),
-        };
-        const okRuns = down ? 0 : 10;
-        const startup = rt.startup * (1 + 0.04 * gauss(r));
-        const results: Record<string, unknown> = {};
-        if (!down) {
-          for (const b of BENCHMARKS) {
-            const revision =
-              suiteHash === "demo-suite-b" && b.category === "applications"
-                ? 1.35
-                : 1;
-            const center = baseOps(b.id, b.category) * rt.speed[b.category] *
-              improve * hostSpeed * revision;
-            const rsd = b.category === "scheduler" ? 0.08 : 0.035;
-            results[b.id] = {
-              ops_per_ms: summary(center * (1 + 0.01 * gauss(r)), rsd, 10, r),
-              total_ms: summary(603, 0.002, 10, r),
-            };
+      for (const spec of RUNTIMES) {
+        for (
+          const mode of spec.modes
+            ? ((spec.id === "scratch-everywhere"
+              ? ["bytecode", "interpreter"]
+              : ["compiler", "interpreter"]) as readonly string[])
+            : ([null] as const)
+        ) {
+          const interp = mode === "interpreter";
+          const rt: RuntimeSpec = interp
+            ? {
+              ...spec,
+              speed: Object.fromEntries(
+                Object.entries(spec.speed).map(([k, v]) => [k, v * 0.03]),
+              ) as RuntimeSpec["speed"],
+            }
+            : spec;
+          const file = mode ? `${rt.id}@${mode}` : rt.id;
+          const down = r() < rt.failRate;
+          const bumps = Math.floor(night / rt.bumpEvery);
+          const version = `1.${bumps}.0+${
+            crypto.createHash("sha1").update(rt.id + bumps).digest("hex").slice(
+              0,
+              7,
+            )
+          }`;
+          const improve = 1 + 0.025 * bumps;
+          const base = {
+            schema_version: 1,
+            timestamp: stamp.toISOString(),
+            suite: { id: "performance", source_hash: suiteHash },
+            repo,
+            runtime: {
+              id: rt.id,
+              name: rt.name,
+              kind: rt.kind,
+              version,
+              detail: {},
+              launcher: rt.launcher,
+              display: rt.display,
+              ...(mode &&
+                {
+                  variant: {
+                    id: mode,
+                    name: mode === "bytecode" ? "bytecode VM" : mode,
+                    default: mode !== "interpreter",
+                  },
+                }),
+            },
+            host: hostFor(host),
+          };
+          const okRuns = down ? 0 : 10;
+          const startup = rt.startup * (1 + 0.04 * gauss(r));
+          const results: Record<string, unknown> = {};
+          if (!down) {
+            for (const b of BENCHMARKS) {
+              const revision =
+                suiteHash === "demo-suite-b" && b.category === "applications"
+                  ? 1.35
+                  : 1;
+              const center = baseOps(b.id, b.category) * rt.speed[b.category] *
+                improve * hostSpeed * revision;
+              const rsd = b.category === "scheduler" ? 0.08 : 0.035;
+              results[b.id] = {
+                ops_per_ms: summary(center * (1 + 0.01 * gauss(r)), rsd, 10, r),
+                total_ms: summary(603, 0.002, 10, r),
+              };
+            }
           }
-        }
-        fs.writeFileSync(
-          path.join(runDir, `performance-${rt.id}.json`),
-          JSON.stringify({
-            ...base,
-            runs: Array.from(
-              { length: 10 },
-              (_, i) => (i < okRuns
-                ? {
-                  ok: true,
-                  startup_ms: startup,
-                  run_ms: 28000,
-                  wall_ms: 28500,
-                  peak_rss_mb: rt.rss,
-                }
-                : { ok: false, error: "exited before the suite finished" }),
-            ),
-            stats: down
-              ? {
-                startup_ms: null,
-                run_ms: null,
-                wall_ms: null,
-                peak_rss_mb: null,
-              }
-              : {
-                startup_ms: summary(startup, 0.04, 10, r),
-                run_ms: summary(28000, 0.01, 10, r),
-                wall_ms: summary(28500, 0.01, 10, r),
-                peak_rss_mb: summary(rt.rss, 0.02, 10, r),
-              },
-            results,
-          }),
-        );
-        written++;
-
-        if (host === "main" && night % 3 === 0) {
-          const fails = rt.parityTotal === 0;
-          const wobble = fails
-            ? 0
-            : Math.round(rt.parityPassed + (r() < 0.1 ? -1 : 0));
           fs.writeFileSync(
-            path.join(runDir, `parity-${rt.id}.json`),
+            path.join(runDir, `performance-${file}.json`),
             JSON.stringify({
               ...base,
-              suite: { id: "parity", source_hash: "demo-parity-suite" },
-              runs: [
-                fails ? { ok: false, error: "timed out after 300s" } : {
-                  ok: true,
-                  startup_ms: 2200,
-                  run_ms: 15000,
-                  wall_ms: 17200,
-                  peak_rss_mb: 210,
+              runs: Array.from(
+                { length: 10 },
+                (_, i) => (i < okRuns
+                  ? {
+                    ok: true,
+                    startup_ms: startup,
+                    run_ms: 28000,
+                    wall_ms: 28500,
+                    peak_rss_mb: rt.rss,
+                  }
+                  : { ok: false, error: "exited before the suite finished" }),
+              ),
+              stats: down
+                ? {
+                  startup_ms: null,
+                  run_ms: null,
+                  wall_ms: null,
+                  peak_rss_mb: null,
+                }
+                : {
+                  startup_ms: summary(startup, 0.04, 10, r),
+                  run_ms: summary(28000, 0.01, 10, r),
+                  wall_ms: summary(28500, 0.01, 10, r),
+                  peak_rss_mb: summary(rt.rss, 0.02, 10, r),
                 },
-              ],
-              stats: {},
-              results: fails ? null : {
-                verdict: wobble === rt.parityTotal ? "passed" : "failed",
-                passed: wobble,
-                total: rt.parityTotal,
-                failed_groups: wobble === rt.parityTotal ? [] : [{
-                  name: "Looks: Colour and brightness effects",
-                  passed: 5,
-                  total: 15,
-                }, { name: "Pen: Set Pen Color To", passed: 1, total: 10 }],
-              },
+              results,
             }),
           );
           written++;
+
+          if (host === "main" && night % 3 === 0) {
+            const fails = rt.parityTotal === 0;
+            const wobble = fails
+              ? 0
+              : Math.round(rt.parityPassed + (r() < 0.1 ? -1 : 0));
+            fs.writeFileSync(
+              path.join(runDir, `parity-${file}.json`),
+              JSON.stringify({
+                ...base,
+                suite: { id: "parity", source_hash: "demo-parity-suite" },
+                runs: [
+                  fails ? { ok: false, error: "timed out after 300s" } : {
+                    ok: true,
+                    startup_ms: 2200,
+                    run_ms: 15000,
+                    wall_ms: 17200,
+                    peak_rss_mb: 210,
+                  },
+                ],
+                stats: {},
+                results: fails ? null : {
+                  verdict: wobble === rt.parityTotal ? "passed" : "failed",
+                  passed: wobble,
+                  total: rt.parityTotal,
+                  failed_groups: wobble === rt.parityTotal ? [] : [{
+                    name: "Looks: Colour and brightness effects",
+                    passed: 5,
+                    total: 15,
+                  }, { name: "Pen: Set Pen Color To", passed: 1, total: 10 }],
+                },
+              }),
+            );
+            written++;
+          }
         }
       }
       fs.writeFileSync(

@@ -63,9 +63,15 @@ describe("resolvePin fallback", () => {
     pathExists: async () => present,
   });
   test("uses npm for a directory the commit doesn't have", async () => {
-    const pin = await resolvePin(withFallback, "parity", "2026-05-01", has(false), {
-      latest: false,
-    });
+    const pin = await resolvePin(
+      withFallback,
+      "parity",
+      "2026-05-01",
+      has(false),
+      {
+        latest: false,
+      },
+    );
     expect(pin?.parts).toEqual([
       { npm: "org-storage", version: "1.0.05", provides: "storage" },
       expect.objectContaining({ provides: { vm: "packages/vm" } }),
@@ -92,9 +98,15 @@ describe("resolvePin fallback", () => {
     });
   });
   test("keeps the directory when the commit has it", async () => {
-    const pin = await resolvePin(withFallback, "parity", "2026-05-01", has(true), {
-      latest: false,
-    });
+    const pin = await resolvePin(
+      withFallback,
+      "parity",
+      "2026-05-01",
+      has(true),
+      {
+        latest: false,
+      },
+    );
     expect(pin?.parts).toHaveLength(1);
     expect((pin!.parts[0] as { provides: object }).provides).toEqual({
       vm: "packages/vm",

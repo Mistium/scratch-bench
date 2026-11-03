@@ -122,7 +122,8 @@ describe("oscratchl history", () => {
   });
 
   test("the compiler mode runs the --compile executable and the interpreter mode runs the project directly", async () => {
-    const [compilerMode, interpreterMode] = oscratchlHistory.variants as Variant[];
+    const [compilerMode, interpreterMode] = oscratchlHistory
+      .variants as Variant[];
     const pin = (await resolve("2026-10-20", "performance"))!;
     const launch = await oscratchlHistory.custom!.build(pin, "performance");
     const compiledCmd = launch.command(project, compilerMode).cmd;
@@ -132,7 +133,11 @@ describe("oscratchl history", () => {
     expect(path.basename(interpretedCmd[0]!)).toBe("oscratchl");
     expect(interpretedCmd[1]).toBe(project);
     for (const cmd of [compiledCmd, interpretedCmd]) {
-      const r = await runOnce({ ...launch.command(project), cmd }, suite, 20_000);
+      const r = await runOnce(
+        { ...launch.command(project), cmd },
+        suite,
+        20_000,
+      );
       expect(r.lines[0]).toContain("10/10");
     }
   });

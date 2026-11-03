@@ -66,7 +66,11 @@ export const oscratchl: Runtime = {
       if (!fs.existsSync(binary)) {
         throw new Error(`OSCRATCHL_BINARY ${binary} does not exist`);
       }
-      return { version: "custom", detail: { binary }, variants: COMPILER_VARIANTS };
+      return {
+        version: "custom",
+        detail: { binary },
+        variants: COMPILER_VARIANTS,
+      };
     }
 
     const { dir, own } = await source(offline);

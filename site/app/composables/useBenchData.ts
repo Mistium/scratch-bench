@@ -1,6 +1,8 @@
 import type { History, Latest, Meta, ScoreHistory } from "#shared/types";
 
-const vmQuery = (separate: Ref<boolean>) => (separate.value ? "1" : undefined);
+const vmQuery = (
+  separate: Ref<boolean> | ComputedRef<boolean>,
+) => (separate.value ? "1" : undefined);
 
 export const useMetaData = () => {
   const { separate } = useBenchState();

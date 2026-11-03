@@ -9,10 +9,24 @@ const root = path.resolve(import.meta.dirname, "..");
 process.stdout.on("error", () => process.exit(0));
 
 const [kind, file] = process.argv.slice(2);
-const KINDS = ["scratch", "turbowarp", "mistwarp", "nitrobolt", "penguinmod", "gandi", "penguinmod-port", "clipcc"];
+const KINDS = [
+  "scratch",
+  "turbowarp",
+  "mistwarp",
+  "nitrobolt",
+  "penguinmod",
+  "gandi",
+  "penguinmod-port",
+  "clipcc",
+  "snailide",
+  "electramod",
+  "02engine",
+  "codetorch",
+  "ampmod",
+];
 if (!KINDS.includes(kind) || !file) {
   console.error(
-    "usage: node chromium-vm.mjs <scratch|turbowarp|mistwarp|nitrobolt|penguinmod|gandi|penguinmod-port|clipcc> <project.sb3>",
+    `usage: node chromium-vm.mjs <${KINDS.join("|")}> <project.sb3>`,
   );
   process.exit(2);
 }

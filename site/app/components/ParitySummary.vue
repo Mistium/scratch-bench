@@ -1,9 +1,11 @@
 <script setup lang="ts">
 const { host, baseline } = useBenchState();
 const { data: latest } = await useLatestData(host);
+const shown = useShown();
 
 const rows = computed(() =>
   (latest.value?.parity ?? [])
+    .filter((r) => shown(r.id))
     .map((r) => {
       const p = r.parity;
       const ratio = p && p.total ? (p.passed ?? 0) / p.total : null;

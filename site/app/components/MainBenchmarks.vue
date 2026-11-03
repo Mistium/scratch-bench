@@ -5,10 +5,11 @@ const { host, baseline, mainMode: mode, log } = useBenchState();
 const { data: meta } = await useMetaData();
 const { data: latest } = await useLatestData(host);
 const { nameOf } = useRuntimes(meta, baseline);
+const shown = useShown();
 const { value, text } = useValues(latest, baseline, mode);
 
 const runtimeIds = computed(() =>
-  (latest.value?.runtimes ?? []).map((r) => r.id)
+  (latest.value?.runtimes ?? []).map((r) => r.id).filter(shown)
 );
 
 const cards = computed(() =>
@@ -50,7 +51,7 @@ const cards = computed(() =>
       <ModeToggle scope="main" />
     </header>
     <p
-      class="panel__subtitle">Whole programs and the scheduler, the closest to how projects really run. Bars use a {{ log ? 'logarithmic' : 'linear' }} scale.</p>
+      class="panel__subtitle">Whole programs and the scheduler, the closest to how projects really run. Bars use a {{ log ? "logarithmic" : "linear" }} scale.</p>
 
     <div class="card-grid">
       <article v-for="c in cards" :key="c.bench.id" class="bench-card">

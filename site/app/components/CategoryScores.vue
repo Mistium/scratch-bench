@@ -6,11 +6,13 @@ const { data: meta } = await useMetaData();
 const { data: scores } = await useScoreData(host, weights);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
+const shown = useShown();
 
 const rows = computed(() => {
   const s = scores.value;
   if (!s) return [];
   return Object.entries(s.runtimes)
+    .filter(([id]) => shown(id))
     .map(([id, series]) => ({
       id,
       name: nameOf(id),
@@ -114,7 +116,10 @@ const option = computed(() => {
   };
   return {
     baseOption: base,
-    media: [{ query: { maxWidth: 560 }, option: { radar: { radius: 90, center: ["50%", 160] } } }],
+    media: [{
+      query: { maxWidth: 560 },
+      option: { radar: { radius: 90, center: ["50%", 160] } },
+    }],
   };
 });
 </script>
@@ -124,7 +129,7 @@ const option = computed(() => {
     <header class="panel__header">
       <h2 id="category-title" class="panel__title">Performance by category</h2>
       <p class="panel__subtitle">
-        The radar shows each runtime against the best one in every category, on a {{ log ? 'logarithmic' : 'linear' }} scale. The table has the scores,
+        The radar shows each runtime against the best one in every category, on a {{ log ? "logarithmic" : "linear" }} scale. The table has the scores,
         with each category's weight.
       </p>
     </header>

@@ -15,6 +15,7 @@
   "dependencies": {
     "croner": "^9.0.0",
     "echarts": "6.1.0",
+    "lucide-vue-next": "^1.0.0",
     "nuxt": "4.6.2",
     "vue": "3.5.44",
     "vue-echarts": "8.3.2",

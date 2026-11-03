@@ -4,6 +4,7 @@ const { data: meta } = await useMetaData();
 const { data: scores } = await useScoreData(host, weights);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
+const shown = useShown();
 
 const option = computed(() => {
   const s = scores.value;
@@ -19,32 +20,33 @@ const option = computed(() => {
     }
     if (hash) prevHash = hash;
   });
-  const series = Object.entries(s?.runtimes ?? {}).map(([id, v], n) => ({
-    name: nameOf(id),
-    type: "line",
-    showSymbol: false,
-    connectNulls: false,
-    lineStyle: {
-      width: 2,
-      color: chart.runtimeColor(id, indexOf(id)),
-      type: chart.lineType(id),
-    },
-    itemStyle: { color: chart.runtimeColor(id, indexOf(id)) },
-    data: s!.timestamps.slice(first).map((t, i) => [t, v.total[first + i]]),
-    markLine: n === 0 && revisions.length
-      ? {
-        silent: true,
-        symbol: "none",
-        lineStyle: { color: chart.muted(), type: "dashed" },
-        label: {
-          formatter: "benchmarks revised",
-          color: chart.muted(),
-          position: "insideEndTop",
-        },
-        data: revisions.map((t) => ({ xAxis: t })),
-      }
-      : undefined,
-  }));
+  const series = Object.entries(s?.runtimes ?? {}).filter(([id]) => shown(id))
+    .map(([id, v], n) => ({
+      name: nameOf(id),
+      type: "line",
+      showSymbol: false,
+      connectNulls: false,
+      lineStyle: {
+        width: 2,
+        color: chart.runtimeColor(id, indexOf(id)),
+        type: chart.lineType(id),
+      },
+      itemStyle: { color: chart.runtimeColor(id, indexOf(id)) },
+      data: s!.timestamps.slice(first).map((t, i) => [t, v.total[first + i]]),
+      markLine: n === 0 && revisions.length
+        ? {
+          silent: true,
+          symbol: "none",
+          lineStyle: { color: chart.muted(), type: "dashed" },
+          label: {
+            formatter: "benchmarks revised",
+            color: chart.muted(),
+            position: "insideEndTop",
+          },
+          data: revisions.map((t) => ({ xAxis: t })),
+        }
+        : undefined,
+    }));
   return chart.narrow({
     ...chart.base(),
     grid: {

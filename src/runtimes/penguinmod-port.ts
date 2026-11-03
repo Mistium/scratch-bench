@@ -13,11 +13,10 @@ export const penguinmodPort = nodeVmRuntime(
     };
   },
   {
-    web: async () => forkStack("penguinmod-port", {}, { modern: true }),
+    web: async () => forkStack("penguinmod-port"),
     variants: COMPILER_VARIANTS,
     history: {
       variants: COMPILER_VARIANTS,
-      modern: true,
       // When the penguinmod-port organisation's repos were created.
       since: { performance: "2025-11-16", parity: "2025-11-16" },
       parts: [

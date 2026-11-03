@@ -149,13 +149,11 @@ describe("VM modes separated", () => {
       "turbowarp~interpreter",
     ]);
     const byId = Object.fromEntries(meta.runtimes.map((r) => [r.id, r]));
-    expect(byId["turbowarp"]!.name).toBe("TurboWarp (compiler)");
+    expect(byId["turbowarp"]!.name).toBe("TurboWarp");
     expect(byId["turbowarp~interpreter"]!.name).toBe("TurboWarp (interpreter)");
     expect(byId["turbowarp~interpreter"]!.base).toBe("turbowarp");
     expect(byId["scratch"]!.name).toBe("Scratch");
-    expect(byId["scratch-everywhere"]!.name).toBe(
-      "Scratch Everywhere! (bytecode VM)",
-    );
+    expect(byId["scratch-everywhere"]!.name).toBe("Scratch Everywhere!");
   });
 
   it("follows a mode over time even when the default changed", () => {

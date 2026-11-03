@@ -45,9 +45,10 @@ export const viewOf = (ds: Dataset, separate: boolean): Entry[] => {
     result = ds.entries.map((e) => {
       const v = e.runtime.variant;
       if (!v) return e;
-      const id = current.get(e.runtime.base) === v.id
-        ? e.runtime.base
-        : `${e.runtime.base}~${v.id}`;
+      if (current.get(e.runtime.base) === v.id) {
+        return { ...e, runtime: { ...e.runtime, id: e.runtime.base } };
+      }
+      const id = `${e.runtime.base}~${v.id}`;
       return {
         ...e,
         runtime: { ...e.runtime, id, name: `${e.runtime.name} (${v.name})` },
