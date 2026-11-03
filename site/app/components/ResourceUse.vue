@@ -25,15 +25,26 @@ const barOption = (pick: "startup" | "memory", unit: (x: number) => string) => {
   const sorted = [...rows.value].filter((r) => r[pick]).sort((a, b) =>
     a[pick]!.median - b[pick]!.median
   );
+  const min = sorted.length
+    ? Math.min(...sorted.map((r) => r[pick]!.median))
+    : 1;
   return {
     ...chart.base(),
-    grid: { left: 8, right: 64, top: 8, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 64, top: 8, bottom: 24, containLabel: true },
     tooltip: {
       ...chart.base().tooltip,
       trigger: "item",
       formatter: (p: any) => `${p.name}: ${unit(p.value)}`,
     },
-    xAxis: { type: log.value ? "log" : "value", ...chart.axis() },
+    xAxis: {
+      type: log.value ? "log" : "value",
+      min: log.value ? 10 ** (Math.floor(Math.log10(min)) - 1) : 0,
+      ...chart.axis(),
+      axisLabel: {
+        ...chart.axis().axisLabel,
+        formatter: (v: number) => unit(v),
+      },
+    },
     yAxis: {
       type: "category",
       inverse: true,
@@ -44,7 +55,8 @@ const barOption = (pick: "startup" | "memory", unit: (x: number) => string) => {
     series: [
       {
         type: "bar",
-        barMaxWidth: 20,
+        barMaxWidth: 18,
+        barCategoryGap: "30%",
         data: sorted.map((r) => ({
           value: r[pick]!.median,
           itemStyle: { color: chart.runtimeColor(r.id, indexOf(r.id)) },
@@ -59,6 +71,8 @@ const barOption = (pick: "startup" | "memory", unit: (x: number) => string) => {
     ],
   };
 };
+
+const chartHeight = computed(() => Math.max(224, rows.value.length * 26 + 40));
 
 const startupOption = computed(() => barOption("startup", fmtMs));
 const memoryOption = computed(() => barOption("memory", fmtMb));
@@ -77,12 +91,12 @@ const memoryOption = computed(() => barOption("memory", fmtMb));
     <div class="resource-use__charts">
       <div class="resource-use__chart">
         <h3 class="resource-use__title">Startup time</h3>
-        <ChartBase :option="startupOption" small
+        <ChartBase :option="startupOption" small :height="chartHeight"
           :label="`Startup time of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
       </div>
       <div class="resource-use__chart">
         <h3 class="resource-use__title">Peak memory</h3>
-        <ChartBase :option="memoryOption" small
+        <ChartBase :option="memoryOption" small :height="chartHeight"
           :label="`Peak memory of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
       </div>
     </div>

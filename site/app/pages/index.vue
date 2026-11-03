@@ -26,11 +26,9 @@ useHead({ title: "ScratchBench" });
             </div>
             <ScoreTrend />
             <ParityTrend />
+            <ParitySummary />
             <MainBenchmarks />
-            <div class="overview__grid">
-              <ResourceUse />
-              <ParitySummary />
-            </div>
+            <ResourceUse />
             <ScoringInfo />
           </section>
 

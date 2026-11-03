@@ -51,6 +51,14 @@ const chartHeight = computed(() => {
   return 340 + Math.ceil(entries / 2) * 24;
 });
 
+const router = useRouter();
+const openCategory = (e: { componentType?: string; name?: string }) => {
+  const id = CATEGORY_IDS.find((c) =>
+    CATEGORIES[c].label === e.name?.replace(/\n/g, " ")
+  );
+  if (e.componentType === "radar" && id) router.push(`/category/${id}`);
+};
+
 const option = computed(() => {
   const plotted = rows.value.filter((r) => r.total != null);
   const base = {
@@ -85,6 +93,7 @@ const option = computed(() => {
         name: CATEGORIES[c].label,
         max: 1,
       })),
+      triggerEvent: true,
       axisName: {
         color: chart.muted(),
         formatter: (name: string) =>
@@ -135,7 +144,7 @@ const option = computed(() => {
     </header>
 
     <div class="category-scores__body">
-      <ChartBase :option="option" :height="chartHeight"
+      <ChartBase :option="option" :height="chartHeight" @click="openCategory"
         :label="`Radar chart of each runtime's performance in every category, relative to the best, ${log ? 'logarithmic' : 'linear'} scale`" />
 
       <div class="table-scroll">
@@ -145,8 +154,10 @@ const option = computed(() => {
               <th scope="col">Runtime</th>
               <th v-for="c in CATEGORY_IDS" :key="c" scope="col"
                 class="table__number" :title="CATEGORIES[c].description">
-                {{ CATEGORIES[c].label }}
-                <span class="table__sub">×{{ weights === "default" ? CATEGORIES[c].weight : 1 }}</span>
+                <NuxtLink
+                  :to="`/category/${c}`">{{ CATEGORIES[c].label }}</NuxtLink>
+                <span
+                  class="table__sub">×{{ weights === "default" ? CATEGORIES[c].weight : 1 }}</span>
               </th>
             </tr>
           </thead>

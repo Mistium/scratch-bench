@@ -32,6 +32,7 @@ use([
   SVGRenderer,
 ]);
 
+const emit = defineEmits<{ click: [event: any] }>();
 defineProps<{
   option: Record<string, unknown>;
   label: string;
@@ -45,7 +46,7 @@ defineProps<{
     <ClientOnly>
       <VChart class="chart" :class="{ 'chart--small': small }" :option="option"
         :style="height ? { height: `${height}px` } : undefined"
-        :init-options="{ renderer: 'svg' }" autoresize role="img"
+        :init-options="{ renderer: 'svg' }" autoresize role="img" @click="emit('click', $event)"
         :aria-label="label" />
       <template #fallback>
         <div class="chart chart--placeholder" :class="{ 'chart--small': small }"

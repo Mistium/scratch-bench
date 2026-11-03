@@ -43,9 +43,7 @@ const option = computed(() => {
       return {
         name: nameOf(id),
         type: "line",
-        symbol: "circle",
-        symbolSize: 6,
-        showSymbol: true,
+        showSymbol: false,
         lineStyle: { width: 2, color, type: chart.lineType(id) },
         itemStyle: { color },
         data: stamps.map((_, i) => i).filter((i) => r.parity_total[first + i])

@@ -7,6 +7,8 @@ export interface DemoOptions {
   nights: number;
   end?: Date;
   seed?: number;
+  /** Also generate the newer runtimes and VM modes (the site's demo); tests use the original six. */
+  extended?: boolean;
 }
 
 const rng = (seed: number) => {
@@ -42,7 +44,7 @@ interface RuntimeSpec {
   modes?: boolean;
 }
 
-const RUNTIMES: RuntimeSpec[] = [
+const BASE: RuntimeSpec[] = [
   {
     id: "scratch",
     name: "Scratch",
@@ -183,7 +185,7 @@ const RUNTIMES: RuntimeSpec[] = [
   },
 ];
 
-const turbowarp = RUNTIMES.find((x) => x.id === "turbowarp")!;
+const turbowarp = BASE.find((x) => x.id === "turbowarp")!;
 const derive = (
   id: string,
   name: string,
@@ -203,13 +205,16 @@ const derive = (
   parityPassed: passed,
   modes,
 });
-for (const x of RUNTIMES) {
+const withModes = BASE.map((x) => ({ ...x }));
+for (const x of withModes) {
   if (
     ["turbowarp", "mistwarp", "nitrobolt", "penguinmod", "scratch-everywhere"]
       .includes(x.id)
   ) x.modes = true;
 }
-RUNTIMES.push(
+const EXTENDED: RuntimeSpec[] = [
+  ...withModes,
+  derive("oscratchl", "oscratchl", 0.9, 300, 2050, false),
   derive("snailide", "Snail IDE", 0.82, 520, 2040),
   derive("electramod", "ElectraMod", 0.74, 500, 2010),
   derive("02engine", "02engine", 0.93, 470, 2090),
@@ -217,7 +222,7 @@ RUNTIMES.push(
   derive("ampmod", "AmpMod", 1.02, 450, 2100),
   derive("clipcc", "ClipCC", 0.02, 430, 1900, false),
   derive("gandi", "Gandi IDE", 0.7, 510, 2000),
-);
+];
 
 const CATEGORY_MAGNITUDE: Record<CategoryId, number> = {
   loops: 4000,
@@ -281,8 +286,9 @@ const hostFor = (name: "main" | "other") =>
 
 export const generate = (
   outDir: string,
-  { nights, end = new Date(), seed = 1 }: DemoOptions,
+  { nights, end = new Date(), seed = 1, extended = false }: DemoOptions,
 ) => {
+  const RUNTIMES = extended ? EXTENDED : BASE;
   const r = rng(seed);
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
@@ -468,6 +474,6 @@ if (import.meta.main) {
     process.argv[2] ?? path.join(import.meta.dir, "../.demo/results"),
   );
   const nights = Number(process.argv[3] ?? 120);
-  const n = generate(out, { nights });
+  const n = generate(out, { nights, extended: true });
   console.log(`wrote ${n} result files for ${nights} nights to ${out}`);
 }
