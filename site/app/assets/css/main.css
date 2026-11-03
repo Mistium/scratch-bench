@@ -1610,3 +1610,48 @@ summary {
     max-height: 20rem;
   }
 }
+
+.site-header__nav {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: var(--space-4);
+}
+
+.site-header__nav a {
+  padding: 0.25rem 0.7rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: var(--radius-2);
+}
+
+.site-header__nav a:hover,
+.site-header__nav a.is-active {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.page__layout--flush {
+  padding: 0;
+}
+
+.compare-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.compare-pick__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.compare-pick__best {
+  margin: 0 0 0 auto;
+  font-size: 0.875rem;
+}

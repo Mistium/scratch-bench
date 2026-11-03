@@ -13,6 +13,10 @@ const effectiveHost = computed(() =>
     <div class="site-header__top">
       <div class="site-header__title">
         <NuxtLink to="/" class="site-header__home">ScratchBench</NuxtLink>
+        <nav class="site-header__nav" aria-label="Pages">
+          <NuxtLink to="/" exact-active-class="is-active">Overview</NuxtLink>
+          <NuxtLink to="/compare" active-class="is-active">Compare</NuxtLink>
+        </nav>
         <span v-if="meta?.demo" class="badge" data-kind="demo">Demo data</span>
       </div>
       <div class="site-header__meta">

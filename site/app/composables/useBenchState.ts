@@ -13,6 +13,8 @@ export const useBenchState = () => {
     mode: useQueryState<"absolute" | "relative">("mode", "absolute"),
     log: useQueryState<boolean>("log", true),
     hidden: useQueryState<string[]>("hide", []),
+    compareX: useQueryState<string>("x", "memory"),
+    compareY: useQueryState<string>("y", "speed"),
     categories: useQueryState<string[]>("cat", []),
     search: useQueryState<string>("q", ""),
     sort: useQueryState<SortKey>("sort", "category"),
