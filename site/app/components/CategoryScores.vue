@@ -44,6 +44,11 @@ const position = (c: string, x: number | null | undefined) => {
   return log.value ? Math.max(0, 1 + Math.log10(x / top) / 3) : x / top;
 };
 
+const chartHeight = computed(() => {
+  const entries = rows.value.filter((r) => r.total != null).length;
+  return 340 + Math.ceil(entries / 2) * 24;
+});
+
 const option = computed(() => {
   const plotted = rows.value.filter((r) => r.total != null);
   const base = {
@@ -66,11 +71,14 @@ const option = computed(() => {
     legend: {
       ...chart.base().legend,
       bottom: 0,
+      left: 8,
+      right: 8,
+      itemGap: 12,
       data: plotted.map((r) => r.name),
     },
     radar: {
-      radius: "52%",
-      center: ["50%", "46%"],
+      radius: 120,
+      center: ["50%", 170],
       indicator: CATEGORY_IDS.map((c) => ({
         name: CATEGORIES[c].label,
         max: 1,
@@ -106,7 +114,7 @@ const option = computed(() => {
   };
   return {
     baseOption: base,
-    media: [{ query: { maxWidth: 560 }, option: { radar: { radius: "38%" } } }],
+    media: [{ query: { maxWidth: 560 }, option: { radar: { radius: 90, center: ["50%", 160] } } }],
   };
 });
 </script>
@@ -122,8 +130,7 @@ const option = computed(() => {
     </header>
 
     <div class="category-scores__body">
-      <ChartBase :option="option"
-        
+      <ChartBase :option="option" :height="chartHeight"
         :label="`Radar chart of each runtime's performance in every category, relative to the best, ${log ? 'logarithmic' : 'linear'} scale`" />
 
       <div class="table-scroll">

@@ -40,6 +40,8 @@ const weightedUp = CATEGORY_IDS.filter((id) => CATEGORIES[id].weight > 1).map((
   id,
 ) => CATEGORIES[id].label);
 
+const chartHeight = computed(() => Math.max(224, ranked.value.length * 26 + 40));
+
 const option = computed(() => {
   const values = ranked.value.map((r) => r.total!);
   const min = values.length ? Math.min(...values) : 1;
@@ -70,7 +72,8 @@ const option = computed(() => {
     series: [
       {
         type: "bar",
-        barMaxWidth: 28,
+        barMaxWidth: 18,
+        barCategoryGap: "30%",
         data: ranked.value.map((r) => ({
           value: r.total,
           itemStyle: { color: chart.runtimeColor(r.id, indexOf(r.id)) },
@@ -100,8 +103,7 @@ const option = computed(() => {
       </p>
     </header>
 
-    <ChartBase :option="option" small
-      
+    <ChartBase :option="option" small :height="chartHeight"
       :label="`Overall performance of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
 
     <div class="table-scroll">

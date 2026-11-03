@@ -36,6 +36,7 @@ defineProps<{
   option: Record<string, unknown>;
   label: string;
   small?: boolean;
+  height?: number;
 }>();
 </script>
 
@@ -43,10 +44,12 @@ defineProps<{
   <div class="chart-frame">
     <ClientOnly>
       <VChart class="chart" :class="{ 'chart--small': small }" :option="option"
+        :style="height ? { height: `${height}px` } : undefined"
         :init-options="{ renderer: 'svg' }" autoresize role="img"
         :aria-label="label" />
       <template #fallback>
         <div class="chart chart--placeholder" :class="{ 'chart--small': small }"
+          :style="height ? { height: `${height}px` } : undefined"
           data-state="loading" />
       </template>
     </ClientOnly>
