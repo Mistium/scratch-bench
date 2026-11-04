@@ -319,16 +319,16 @@ export const generate = (
         for (
           const mode of spec.modes
             ? ((spec.id === "scratch-everywhere"
-              ? ["bytecode", "interpreter"]
+              ? ["jit", "bytecode", "interpreter"]
               : ["compiler", "interpreter"]) as readonly string[])
             : ([null] as const)
         ) {
-          const interp = mode === "interpreter";
-          const rt: RuntimeSpec = interp
+          const slow = mode === "interpreter" ? 0.03 : mode === "bytecode" ? 0.3 : 1;
+          const rt: RuntimeSpec = slow !== 1
             ? {
               ...spec,
               speed: Object.fromEntries(
-                Object.entries(spec.speed).map(([k, v]) => [k, v * 0.03]),
+                Object.entries(spec.speed).map(([k, v]) => [k, v * slow]),
               ) as RuntimeSpec["speed"],
             }
             : spec;
@@ -359,8 +359,8 @@ export const generate = (
                 {
                   variant: {
                     id: mode,
-                    name: mode === "bytecode" ? "bytecode VM" : mode,
-                    default: mode !== "interpreter",
+                    name: mode === "bytecode" ? "bytecode VM" : mode === "jit" ? "JIT" : mode,
+                    default: mode === "jit" || mode === "compiler",
                   },
                 }),
             },

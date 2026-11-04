@@ -122,4 +122,19 @@ describe("Scratch Everywhere! VM modes", () => {
     only[0]!.prepare!(sb3);
     expect(settings()).toBeNull();
   });
+
+  test("a build with the JIT has all three, and the JIT is the default", () => {
+    const vms = vmVariants("jit");
+    expect(vms.map((v) => [v.id, v.default])).toEqual([["jit", true], ["bytecode", false], ["interpreter", false]]);
+  });
+
+  test("the JIT build's other VMs are selected by the runtime setting, the JIT by having none", () => {
+    const [jit, bytecode, interpreter] = vmVariants("jit");
+    bytecode!.prepare!(sb3);
+    expect(settings()).toEqual({ settings: { runtime: "bytecode" } });
+    interpreter!.prepare!(sb3);
+    expect(settings()).toEqual({ settings: { runtime: "interpreter" } });
+    jit!.prepare!(sb3);
+    expect(settings()).toBeNull();
+  });
 });

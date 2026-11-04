@@ -154,12 +154,39 @@ const hasAudioFix = (sha: string) => containsCommit(sha, "99e3c7d4");
 
 export const hasBytecodeVm = (sha: string) => containsCommit(sha, "4cb9003d");
 
+export const hasJit = (sha: string) => containsCommit(sha, "7374c171");
+
+export const vmOf = async (sha: string): Promise<boolean | "jit"> =>
+  (await hasJit(sha)) ? "jit" : hasBytecodeVm(sha);
+
 const settingsFile = (sb3: string) => `${sb3}.json`;
 const removeSettings = (sb3: string) =>
   fs.rmSync(settingsFile(sb3), { force: true });
 
-export const vmVariants = (bytecode: boolean): Variant[] =>
-  bytecode
+const runtimeSetting = (runtime: string) => (sb3: string) =>
+  fs.writeFileSync(
+    settingsFile(sb3),
+    JSON.stringify({ settings: { runtime } }),
+  );
+
+export const vmVariants = (vm: boolean | "jit"): Variant[] =>
+  vm === "jit"
+    ? [
+      { id: "jit", name: "JIT", default: true, prepare: removeSettings },
+      {
+        id: "bytecode",
+        name: "bytecode VM",
+        default: false,
+        prepare: runtimeSetting("bytecode"),
+      },
+      {
+        id: "interpreter",
+        name: "interpreter",
+        default: false,
+        prepare: runtimeSetting("interpreter"),
+      },
+    ]
+    : vm
     ? [
       {
         id: "bytecode",
@@ -250,6 +277,6 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
 
 export const scratchEverywhereHistory: HistorySpec = {
   since: { performance: "2026-10-04", parity: "2026-10-05" },
-  variants: async (pin) => vmVariants(await hasBytecodeVm(pin.custom!.sha!)),
+  variants: async (pin) => vmVariants(await vmOf(pin.custom!.sha!)),
   custom: { resolve: (date) => resolve(date), build },
 };
