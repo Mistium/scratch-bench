@@ -33,6 +33,11 @@ useHead({ title: `${category.label} · ScratchBench` });
             <NuxtLink :to="{ path: '/', query: { cat: id }, hash: '#advanced' }">See its benchmarks</NuxtLink>
           </p>
         </header>
+        <nav class="category-links" aria-label="Category pages">
+          <span class="category-links__label">Categories:</span>
+          <NuxtLink v-for="c in CATEGORY_IDS" :key="c" :to="`/category/${c}`"
+            class="category-links__link" active-class="category-links__link--active">{{ CATEGORIES[c].label }}</NuxtLink>
+        </nav>
         <div class="benchmark-page__controls">
           <RuntimeChips />
         </div>

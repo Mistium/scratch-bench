@@ -141,6 +141,11 @@ const option = computed(() => {
         The radar shows each runtime against the best one in every category, on a {{ log ? "logarithmic" : "linear" }} scale. The table has the scores,
         with each category's weight.
       </p>
+      <nav class="category-links" aria-label="Category pages">
+        <span class="category-links__label">Dive into a category:</span>
+        <NuxtLink v-for="c in CATEGORY_IDS" :key="c" :to="`/category/${c}`"
+          class="category-links__link">{{ CATEGORIES[c].label }}</NuxtLink>
+      </nav>
     </header>
 
     <div class="category-scores__body">

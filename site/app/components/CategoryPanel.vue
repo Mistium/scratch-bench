@@ -132,6 +132,14 @@ const historicalOption = computed(() => {
         :aria-selected="tab === 'historical'" @click="tab = 'historical'">Historical</button>
     </div>
 
+    <div class="bench-panel__toolbar">
+      <RangePicker v-if="tab === 'historical'" scope="trend" />
+      <label class="field field--check">
+        <input v-model="log" type="checkbox" class="field__checkbox" />
+        <span class="field__label">Logarithmic axis</span>
+      </label>
+    </div>
+
     <div v-if="tab === 'current'" class="bench-panel__body">
       <ChartBase :option="barOption" small :height="chartHeight"
         :label="`${category.label} score of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
@@ -159,13 +167,6 @@ const historicalOption = computed(() => {
     </div>
 
     <div v-else class="bench-panel__body">
-      <div class="bench-panel__toolbar">
-        <RangePicker scope="trend" />
-        <label class="field field--check">
-          <input v-model="log" type="checkbox" class="field__checkbox" />
-          <span class="field__label">Logarithmic axis</span>
-        </label>
-      </div>
       <ChartBase v-if="(scores?.timestamps.length ?? 0) > 1" :option="historicalOption"
         :label="`${category.label} score of each runtime over time`" />
       <p v-else class="panel__note" data-state="empty">There is not enough history yet.</p>

@@ -1655,3 +1655,29 @@ summary {
   margin: 0 0 0 auto;
   font-size: 0.875rem;
 }
+
+.category-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.category-links__label {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+  margin-right: 0.25rem;
+}
+.category-links__link {
+  padding: 0.2rem 0.65rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  text-decoration: none;
+  opacity: 0.8;
+}
+.category-links__link:hover,
+.category-links__link--active {
+  opacity: 1;
+  font-weight: 600;
+}
