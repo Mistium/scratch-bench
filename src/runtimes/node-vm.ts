@@ -17,6 +17,52 @@ export type NodeVmId =
   | "02engine"
   | "codetorch";
 
+const PARTS = ["vm", "render", "audio", "storage", "svg-renderer"];
+const SHARES: Partial<Record<NodeVmId, NodeVmId>> = {
+  snailide: "penguinmod",
+  electramod: "penguinmod",
+};
+
+const headOf = async (repo: string): Promise<string | null> => {
+  const proc = Bun.spawn(
+    ["git", "ls-remote", `https://github.com/${repo}`, "HEAD"],
+    { stdout: "pipe", stderr: "ignore", stdin: "ignore" },
+  );
+  const out = await new Response(proc.stdout).text();
+  return (await proc.exited) === 0 ? out.split(/\s/)[0] || null : null;
+};
+
+const trackLatest = async (id: NodeVmId): Promise<void> => {
+  const pkg = await Bun.file(path.join(ROOT, "package.json")).json();
+  const prefixes = [id, SHARES[id]].filter((x): x is NodeVmId => !!x);
+  const moves: string[] = [];
+  for (const prefix of prefixes) {
+    for (const part of PARTS) {
+      const dep = `${prefix}-${part}`;
+      const spec = String(pkg.dependencies?.[dep] ?? "");
+      if (!spec.startsWith("github:")) continue;
+      const [repo, pinned] = spec.slice("github:".length).split("#");
+      const head = await headOf(repo!);
+      if (head && head !== pinned) moves.push(`${dep}@github:${repo}#${head}`);
+    }
+  }
+  if (!moves.length) return;
+  const proc = Bun.spawn(["bun", "add", ...moves], {
+    cwd: ROOT,
+    stdout: "ignore",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
+  const err = await new Response(proc.stderr).text();
+  if ((await proc.exited) !== 0) {
+    console.error(
+      `  ${id}: could not move to the latest commits, keeping the pins: ${
+        err.trim().split("\n").at(-1)
+      }`,
+    );
+  }
+};
+
 export const nodeVmRuntime = (
   id: NodeVmId,
   name: string,
@@ -34,6 +80,7 @@ export const nodeVmRuntime = (
     kind: "node",
     history,
     setup: async (opts) => {
+      if (!opts.offline) await trackLatest(id);
       const described = await describe();
       const info = variants ? { ...described, variants } : described;
       if (web && opts.gui) await ensureWebBundle(await web());
