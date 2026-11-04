@@ -82,17 +82,25 @@ const fromArtifact = async (
   return bin;
 };
 
+const COMMON_FLAGS = [
+  "-DSE_CLOUDVARS=OFF",
+  "-DSE_DOWNLOAD=OFF",
+  "-DCMAKE_CXX_STANDARD_LIBRARIES=-lXrandr -lX11",
+];
+
 const LOCAL_FLAGS = {
   headless: [
     "-DSE_RENDERER=headless",
     "-DSE_WINDOWING=headless",
     "-DSE_AUDIO_ENGINE=headless",
     "-DSE_AUDIO=OFF",
+    ...COMMON_FLAGS,
   ],
   gui: [
     "-DSE_RENDERER=sdl2",
     "-DSE_WINDOWING=sdl2",
     "-DSE_AUDIO_ENGINE=sdl2",
+    ...COMMON_FLAGS,
   ],
 } as const;
 
@@ -276,7 +284,7 @@ const build = async (pin: Pin, suite: SuiteId): Promise<HistoricLaunch> => {
 };
 
 export const scratchEverywhereHistory: HistorySpec = {
-  since: { performance: "2026-10-04", parity: "2026-10-05" },
+  since: { performance: "2026-02-01", parity: "2026-07-29" },
   variants: async (pin) => vmVariants(await vmOf(pin.custom!.sha!)),
   custom: { resolve: (date) => resolve(date), build },
 };
