@@ -15,6 +15,7 @@ const chart = useChartTheme();
 const bench = computed(() => BENCHMARK_BY_ID[props.id]);
 const tab = ref<"current" | "historical">(props.initialTab ?? "current");
 const tabId = `tabs-${props.id}`;
+const replaying = ref(false);
 
 const runtimes = computed(() =>
   (latest.value?.runtimes ?? []).filter((r) => shown(r.id))
@@ -152,7 +153,11 @@ const currentOption = computed(() => {
 
     <div v-if="tab === 'current'" :id="`${tabId}-current-panel`" role="tabpanel"
       :aria-labelledby="`${tabId}-current`" class="bench-panel__body">
-      <ChartBase :option="currentOption" small
+      <div class="bench-panel__toolbar">
+        <ReplayToggle v-model="replaying" />
+      </div>
+      <BenchmarkReplay v-if="replaying" :id="id" />
+      <ChartBase v-else :option="currentOption" small
         :label="`${bench.label}: result of each runtime`" />
       <div class="table-scroll">
         <table class="table">

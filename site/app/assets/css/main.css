@@ -1681,3 +1681,33 @@ summary {
   opacity: 1;
   font-weight: 600;
 }
+
+.replay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.replay__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.replay__play,
+.replay__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.replay__slider {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  accent-color: var(--color-accent);
+}
+.replay__date {
+  min-width: 6.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

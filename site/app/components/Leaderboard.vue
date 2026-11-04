@@ -8,6 +8,12 @@ const { data: latest } = await useLatestData(host);
 const { nameOf, indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
 const shown = useShown();
+const replaying = ref(false);
+const replaySeries = computed(() =>
+  Object.entries(scores.value?.runtimes ?? {})
+    .filter(([id]) => shown(id))
+    .map(([id, s]) => ({ id, name: nameOf(id), values: s.total }))
+);
 
 const rows = computed(() => {
   const s = scores.value;
@@ -107,7 +113,12 @@ const option = computed(() => {
       </p>
     </header>
 
-    <ChartBase :option="option" small :height="chartHeight"
+    <div class="bench-panel__toolbar">
+      <ReplayToggle v-model="replaying" />
+    </div>
+    <BarReplay v-if="replaying && (scores?.timestamps.length ?? 0) > 1" :timestamps="scores!.timestamps"
+      :series="replaySeries" :format="fmtOps" :log="log" label="Overall performance of each runtime" />
+    <ChartBase v-else :option="option" small :height="chartHeight"
       :label="`Overall performance of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
 
     <div class="table-scroll">

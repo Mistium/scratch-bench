@@ -12,6 +12,12 @@ const chart = useChartTheme();
 
 const category = computed(() => CATEGORIES[props.id]);
 const tab = ref<"current" | "historical">("current");
+const replaying = ref(false);
+const replaySeries = computed(() =>
+  Object.entries(scores.value?.runtimes ?? {})
+    .filter(([id]) => shown(id))
+    .map(([id, s]) => ({ id, name: nameOf(id), values: s.categories[props.id] ?? [] }))
+);
 
 const rows = computed(() =>
   Object.entries(scores.value?.runtimes ?? {})
@@ -134,6 +140,7 @@ const historicalOption = computed(() => {
 
     <div class="bench-panel__toolbar">
       <RangePicker v-if="tab === 'historical'" scope="trend" />
+      <ReplayToggle v-else v-model="replaying" />
       <label class="field field--check">
         <input v-model="log" type="checkbox" class="field__checkbox" />
         <span class="field__label">Logarithmic axis</span>
@@ -141,7 +148,9 @@ const historicalOption = computed(() => {
     </div>
 
     <div v-if="tab === 'current'" class="bench-panel__body">
-      <ChartBase :option="barOption" small :height="chartHeight"
+      <BarReplay v-if="replaying && (scores?.timestamps.length ?? 0) > 1" :timestamps="scores!.timestamps"
+        :series="replaySeries" :format="fmtOps" :log="log" :label="`${category.label} score of each runtime`" />
+      <ChartBase v-else :option="barOption" small :height="chartHeight"
         :label="`${category.label} score of each runtime, ${log ? 'logarithmic' : 'linear'} scale`" />
       <div class="table-scroll">
         <table class="table">
