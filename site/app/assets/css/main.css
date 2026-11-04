@@ -1676,10 +1676,16 @@ summary {
   text-decoration: none;
   opacity: 0.8;
 }
-.category-links__link:hover,
+.category-links__link:hover {
+  opacity: 1;
+  background: var(--color-surface-hover);
+}
 .category-links__link--active {
   opacity: 1;
   font-weight: 600;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .replay {
