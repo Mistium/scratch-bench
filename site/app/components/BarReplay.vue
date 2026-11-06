@@ -83,25 +83,24 @@ const durationMs = computed(() => {
   return Math.min(90000, Math.max(30000, Math.round(days * 180)));
 });
 
-let rafId: number | undefined;
-let lastRafTime: number | undefined;
+const TICK_MS = 200;
+const animDuration = computed(() => (playing.value ? TICK_MS : 0));
+
+let timer: ReturnType<typeof setTimeout> | undefined;
+let lastTickTime: number | undefined;
 
 const stop = () => {
   playing.value = false;
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = undefined;
-  }
-  lastRafTime = undefined;
+  clearTimeout(timer);
+  timer = undefined;
+  lastTickTime = undefined;
 };
 
-const tick = (now: number) => {
+const tick = () => {
   if (!playing.value) return;
-  if (lastRafTime == null) {
-    lastRafTime = now;
-  }
-  const deltaRealMs = Math.max(0, now - lastRafTime);
-  lastRafTime = now;
+  const now = performance.now();
+  const deltaRealMs = lastTickTime != null ? Math.max(0, now - lastTickTime) : TICK_MS;
+  lastTickTime = now;
 
   const deltaHistMs = (deltaRealMs * speed.value / durationMs.value) * timeSpan.value;
   currentTime.value += deltaHistMs;
@@ -112,7 +111,7 @@ const tick = (now: number) => {
     return;
   }
 
-  rafId = requestAnimationFrame(tick);
+  timer = setTimeout(tick, TICK_MS);
 };
 
 const play = () => {
@@ -120,8 +119,9 @@ const play = () => {
     currentTime.value = startTime.value;
   }
   playing.value = true;
-  lastRafTime = undefined;
-  rafId = requestAnimationFrame(tick);
+  lastTickTime = performance.now();
+  clearTimeout(timer);
+  timer = setTimeout(tick, TICK_MS);
 };
 
 const toggle = () => (playing.value ? stop() : play());
@@ -161,6 +161,7 @@ const chartHeight = computed(() =>
 const option = computed(() => {
   const { min, max } = bounds.value;
   const names = present.value.map((s) => s.name);
+  const dur = animDuration.value;
   const valueAxis = {
     type: props.log ? "log" : "value",
     min: props.log ? 10 ** (Math.floor(Math.log10(min)) - 1) : 0,
@@ -175,8 +176,8 @@ const option = computed(() => {
     type: "category",
     data: names,
     max: Math.max(0, names.length - 1),
-    animationDuration: 0,
-    animationDurationUpdate: 0,
+    animationDuration: dur,
+    animationDurationUpdate: dur,
     ...chart.axis(),
     ...(props.vertical
       ? { axisLabel: { ...chart.axis().axisLabel, interval: 0, rotate: 35 } }
@@ -186,7 +187,9 @@ const option = computed(() => {
   return {
     ...chart.base(),
     animationDuration: 0,
-    animationDurationUpdate: 0,
+    animationDurationUpdate: dur,
+    animationEasing: "linear",
+    animationEasingUpdate: "linear",
     grid: props.vertical
       ? { left: 8, right: 24, top: 24, bottom: 8, containLabel: true }
       : { left: 8, right: 72, top: 8, bottom: 24, containLabel: true },
@@ -211,7 +214,7 @@ const option = computed(() => {
         show: true,
         position: props.vertical ? "top" : "right",
         color: chart.text(),
-        valueAnimation: false,
+        valueAnimation: true,
         formatter: (p: any) => props.format(p.value),
       },
     }],
