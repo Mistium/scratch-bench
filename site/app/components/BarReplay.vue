@@ -21,75 +21,144 @@ const { data: meta } = useMetaData();
 const { indexOf } = useRuntimes(meta, baseline);
 const chart = useChartTheme();
 
-const filled = computed(() =>
-  props.series.map((s) => {
-    let last: number | null = null;
-    return {
-      ...s,
-      values: s.values.map((v) => (last = v != null && v > 0 ? v : last)),
-    };
-  })
-);
+const times = computed(() => props.timestamps.map((t) => new Date(t).getTime()));
+const startTime = computed(() => times.value[0] ?? 0);
+const endTime = computed(() => times.value[times.value.length - 1] ?? 0);
+const timeSpan = computed(() => Math.max(1, endTime.value - startTime.value));
+
+const parsedSeries = computed(() => {
+  const ts = times.value;
+  return props.series.map((s) => {
+    const points: { t: number; v: number }[] = [];
+    for (let i = 0; i < s.values.length; i++) {
+      const v = s.values[i];
+      if (v != null && Number.isFinite(v) && v > 0) {
+        points.push({ t: ts[i], v });
+      }
+    }
+    return { id: s.id, name: s.name, points };
+  });
+});
+
+const interpolateAt = (points: { t: number; v: number }[], t: number): number | null => {
+  if (!points.length) return null;
+  if (t < points[0].t) return null;
+  if (t >= points[points.length - 1].t) return points[points.length - 1].v;
+
+  let low = 0;
+  let high = points.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (points[mid].t <= t) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  const i = Math.max(0, high);
+  const p0 = points[i];
+  const p1 = points[i + 1];
+  if (!p1 || p1.t === p0.t) return p0.v;
+
+  const ratio = (t - p0.t) / (p1.t - p0.t);
+  if (props.log && p0.v > 0 && p1.v > 0) {
+    return Math.exp(Math.log(p0.v) + ratio * (Math.log(p1.v) - Math.log(p0.v)));
+  }
+  return p0.v + ratio * (p1.v - p0.v);
+};
 
 const bounds = computed(() => {
-  const all = filled.value.flatMap((s) => s.values).filter((v): v is number =>
-    v != null
-  );
+  const all = parsedSeries.value.flatMap((s) => s.points.map((p) => p.v));
   if (!all.length) return { min: 0, max: 1 };
   return { min: Math.min(...all), max: Math.max(...all) };
 });
 
-const last = computed(() => Math.max(0, props.timestamps.length - 1));
-const frame = ref(0);
+const currentTime = ref(0);
 const playing = ref(false);
 const speed = ref(1);
-const SPEEDS = [0.5, 1, 2, 4];
+const SPEEDS = [0.5, 1, 2, 3];
 
-const baseMs = computed(() =>
-  Math.min(500, Math.max(80, 15000 / Math.max(1, props.timestamps.length)))
-);
-const stepMs = computed(() => baseMs.value / speed.value);
-
-let timer: ReturnType<typeof setTimeout> | undefined;
-const stop = () => {
-  playing.value = false;
-  clearTimeout(timer);
-};
-const tick = () => {
-  if (!playing.value) return;
-  if (frame.value >= last.value) return stop();
-  frame.value++;
-  timer = setTimeout(tick, stepMs.value);
-};
-const play = () => {
-  if (frame.value >= last.value) frame.value = 0;
-  playing.value = true;
-  clearTimeout(timer);
-  timer = setTimeout(tick, stepMs.value);
-};
-const toggle = () => (playing.value ? stop() : play());
-const scrub = (e: Event) => {
-  stop();
-  frame.value = Number((e.target as HTMLInputElement).value);
-};
-onMounted(play);
-onBeforeUnmount(stop);
-watch(() => props.timestamps.length, () => {
-  frame.value = Math.min(frame.value, last.value);
+const durationMs = computed(() => {
+  const days = timeSpan.value / 86400000;
+  return Math.min(90000, Math.max(30000, Math.round(days * 180)));
 });
 
+let rafId: number | undefined;
+let lastRafTime: number | undefined;
+
+const stop = () => {
+  playing.value = false;
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = undefined;
+  }
+  lastRafTime = undefined;
+};
+
+const tick = (now: number) => {
+  if (!playing.value) return;
+  if (lastRafTime == null) {
+    lastRafTime = now;
+  }
+  const deltaRealMs = Math.max(0, now - lastRafTime);
+  lastRafTime = now;
+
+  const deltaHistMs = (deltaRealMs * speed.value / durationMs.value) * timeSpan.value;
+  currentTime.value += deltaHistMs;
+
+  if (currentTime.value >= endTime.value) {
+    currentTime.value = endTime.value;
+    stop();
+    return;
+  }
+
+  rafId = requestAnimationFrame(tick);
+};
+
+const play = () => {
+  if (currentTime.value >= endTime.value) {
+    currentTime.value = startTime.value;
+  }
+  playing.value = true;
+  lastRafTime = undefined;
+  rafId = requestAnimationFrame(tick);
+};
+
+const toggle = () => (playing.value ? stop() : play());
+
+const scrub = (e: Event) => {
+  stop();
+  currentTime.value = Number((e.target as HTMLInputElement).value);
+};
+
+const currentDateIso = computed(() =>
+  new Date(currentTime.value).toISOString()
+);
+
+watch(
+  [startTime, endTime],
+  ([start, end]) => {
+    if (currentTime.value < start || currentTime.value > end) {
+      currentTime.value = start;
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(play);
+onBeforeUnmount(stop);
+
 const present = computed(() =>
-  filled.value
-    .map((s) => ({ ...s, value: s.values[frame.value] ?? null }))
-    .filter((s) => s.value != null)
+  parsedSeries.value
+    .map((s) => ({ ...s, value: interpolateAt(s.points, currentTime.value) }))
+    .filter((s): s is { id: string; name: string; points: { t: number; v: number }[]; value: number } => s.value != null)
 );
 
 const chartHeight = computed(() =>
-  props.vertical ? undefined : Math.max(224, filled.value.length * 26 + 40)
+  props.vertical ? undefined : Math.max(224, parsedSeries.value.length * 26 + 40)
 );
 
 const option = computed(() => {
-  const dur = Math.round(stepMs.value);
   const { min, max } = bounds.value;
   const names = present.value.map((s) => s.name);
   const valueAxis = {
@@ -106,8 +175,8 @@ const option = computed(() => {
     type: "category",
     data: names,
     max: Math.max(0, names.length - 1),
-    animationDuration: dur,
-    animationDurationUpdate: dur,
+    animationDuration: 0,
+    animationDurationUpdate: 0,
     ...chart.axis(),
     ...(props.vertical
       ? { axisLabel: { ...chart.axis().axisLabel, interval: 0, rotate: 35 } }
@@ -117,9 +186,7 @@ const option = computed(() => {
   return {
     ...chart.base(),
     animationDuration: 0,
-    animationDurationUpdate: dur,
-    animationEasing: "linear",
-    animationEasingUpdate: "linear",
+    animationDurationUpdate: 0,
     grid: props.vertical
       ? { left: 8, right: 24, top: 24, bottom: 8, containLabel: true }
       : { left: 8, right: 72, top: 8, bottom: 24, containLabel: true },
@@ -144,7 +211,7 @@ const option = computed(() => {
         show: true,
         position: props.vertical ? "top" : "right",
         color: chart.text(),
-        valueAnimation: true,
+        valueAnimation: false,
         formatter: (p: any) => props.format(p.value),
       },
     }],
@@ -159,14 +226,14 @@ const option = computed(() => {
         :aria-label="playing ? 'Pause replay' : 'Play replay'"
         @click="toggle">
         <Pause v-if="playing" :size="16" aria-hidden="true" />
-        <Play v-else-if="frame < last" :size="16" aria-hidden="true" />
+        <Play v-else-if="currentTime < endTime" :size="16" aria-hidden="true" />
         <RotateCcw v-else :size="16" aria-hidden="true" />
       </button>
-      <input class="replay__slider" type="range" min="0" :max="last" step="1"
-        :value="frame"
+      <input class="replay__slider" type="range" :min="startTime" :max="endTime" step="any"
+        :value="currentTime"
         aria-label="Point in time" @input="scrub" />
       <time class="replay__date"
-        :datetime="timestamps[frame]">{{ fmtDate(timestamps[frame]) }}</time>
+        :datetime="currentDateIso">{{ fmtDate(currentDateIso) }}</time>
       <div class="segmented" role="group" aria-label="Replay speed">
         <button v-for="s in SPEEDS" :key="s" type="button"
           class="segmented__button"
@@ -176,6 +243,6 @@ const option = computed(() => {
       </div>
     </div>
     <ChartBase :option="option" small :height="chartHeight"
-      :label="`${label} over time, ${fmtDate(timestamps[frame])}`" />
+      :label="`${label} over time, ${fmtDate(currentDateIso)}`" />
   </div>
 </template>
