@@ -165,7 +165,12 @@ export const renderReport = (results: SuiteResult[]): string => {
         verdict: string;
         passed: number | null;
         total: number | null;
-        failed_groups: { name: string; passed: number; total: number }[];
+        failed_groups: {
+          name: string;
+          passed: number;
+          total: number;
+          failures?: string[];
+        }[];
       } | null;
       if (r.skipped) {
         out.push(
@@ -193,6 +198,7 @@ export const renderReport = (results: SuiteResult[]): string => {
       );
       for (const g of d.failed_groups) {
         out.push(`  ${g.name}: ${g.passed}/${g.total}`);
+        for (const f of g.failures ?? []) out.push(`    ${f}`);
       }
     }
     out.push("");

@@ -51,7 +51,12 @@ export interface ParitySummary {
   verdict: "passed" | "failed" | "unknown";
   passed: number | null;
   total: number | null;
-  failed_groups: { name: string; passed: number; total: number }[];
+  failed_groups: {
+    name: string;
+    passed: number;
+    total: number;
+    failures: string[];
+  }[];
 }
 
 export interface LatestRuntime {
