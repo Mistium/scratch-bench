@@ -144,6 +144,9 @@ export const parseResult = (
             name: g.name,
             passed: Number(g.passed) || 0,
             total: Number(g.total) || 0,
+            failures: Array.isArray(g.failures)
+              ? g.failures.filter((f: unknown) => typeof f === "string")
+              : [],
           }))
         : [],
     };

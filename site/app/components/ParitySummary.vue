@@ -44,14 +44,17 @@ const rows = computed(() =>
           <div class="parity__body">
             <p v-if="!r.parity"
               class="parity__note">This runtime did not finish the parity run, so it has no result.</p>
-            <p v-else-if="!r.parity.failed_groups.length"
+            <p v-else-if="r.parity.verdict === 'passed'"
               class="parity__note">Every test passed.</p>
-            <ul v-else class="parity__groups">
+            <ul v-else-if="r.parity.failed_groups.length" class="parity__groups">
               <li v-for="g in r.parity.failed_groups" :key="g.name"
                 class="parity__group">
                 <span class="parity__group-name">{{ g.name }}</span>
                 <span
                   class="parity__group-score">{{ g.passed }} / {{ g.total }}</span>
+                <ul v-if="g.failures.length" class="parity__failures">
+                  <li v-for="(f, i) in g.failures" :key="i">{{ f }}</li>
+                </ul>
               </li>
             </ul>
             <p v-if="r.parity?.stale"

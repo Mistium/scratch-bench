@@ -13,7 +13,12 @@ export interface ParityData {
   verdict: "passed" | "failed" | "unknown";
   passed: number | null;
   total: number | null;
-  failed_groups: { name: string; passed: number; total: number }[];
+  failed_groups: {
+    name: string;
+    passed: number;
+    total: number;
+    failures: string[];
+  }[];
 }
 
 export interface Suite<T = unknown> {
@@ -74,13 +79,17 @@ export const parity: Suite<ParityData> = {
         data.total = Number(v[3]);
       }
       const f = /^\[FAILED\] (.+?): (\d+)\/(\d+) /.exec(line);
-      if (f) {
+      if (f && !v) {
         data.failed_groups.push({
           name: f[1],
           passed: Number(f[2]),
           total: Number(f[3]),
+          failures: [],
         });
       }
+      // "┣ Test 3 Failed: <what it checks> | got <what the runtime produced>" under its group
+      const t = /^[┣┗] (.+)$/.exec(line);
+      if (t) data.failed_groups.at(-1)?.failures.push(t[1]);
     }
     return data;
   },
