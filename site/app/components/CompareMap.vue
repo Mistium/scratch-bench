@@ -67,6 +67,61 @@ const corner = computed(() =>
   }`
 );
 
+type Box = { x: number; y: number; width: number; height: number };
+const hits = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width &&
+  a.y < b.y + b.height && b.y < a.y + a.height;
+
+const frame = ref<HTMLElement | null>(null);
+const outside = (b: Box) => {
+  const w = frame.value?.clientWidth ?? Infinity;
+  const h = frame.value?.clientHeight ?? Infinity;
+  return b.x < 0 || b.y < 0 || b.x + b.width > w || b.y + b.height > h;
+};
+
+const labelPlacer = () => {
+  const dots = new Map<number, Box>();
+  let placed: Box[] = [];
+  return (p: any) => {
+    if (p.dataIndex === 0) placed = [];
+    const d: Box = p.rect;
+    dots.set(p.dataIndex, d);
+    const { width: w, height: h } = p.labelRect;
+    const cx = d.x + d.width / 2;
+    const cy = d.y + d.height / 2;
+    const gap = d.width / 2 + 6;
+    const step = h * 0.9;
+    const options = [
+      [cx + gap, cy, "left", "middle"],
+      [cx - gap, cy, "right", "middle"],
+      [cx, cy - gap, "center", "bottom"],
+      [cx, cy + gap, "center", "top"],
+      [cx + gap, cy - step, "left", "middle"],
+      [cx + gap, cy + step, "left", "middle"],
+      [cx - gap, cy - step, "right", "middle"],
+      [cx - gap, cy + step, "right", "middle"],
+    ] as const;
+    const boxOf = (o: typeof options[number]): Box => ({
+      x: o[2] === "left" ? o[0] : o[2] === "right" ? o[0] - w : o[0] - w / 2,
+      y: o[3] === "middle" ? o[1] - h / 2 : o[3] === "bottom" ? o[1] - h : o[1],
+      width: w,
+      height: h,
+    });
+    let best: typeof options[number] = options[0];
+    let bestScore = Infinity;
+    for (const o of options) {
+      const b = boxOf(o);
+      let score = placed.filter((q) => hits(b, q)).length * 2 +
+        (outside(b) ? 10 : 0);
+      for (const [i, q] of dots) if (i !== p.dataIndex && hits(b, q)) score++;
+      if (score < bestScore) [best, bestScore] = [o, score];
+      if (!score) break;
+    }
+    placed.push(boxOf(best));
+    return { x: best[0], y: best[1], align: best[2], verticalAlign: best[3] };
+  };
+};
+
 const option = computed(() => {
   const xs = points.value.map((p) => p.x);
   const ys = points.value.map((p) => p.y);
@@ -129,7 +184,7 @@ const option = computed(() => {
         fontSize: 12,
         fontWeight: 500,
       },
-      labelLayout: { hideOverlap: true },
+      labelLayout: labelPlacer(),
       emphasis: { scale: 1.4, label: { show: true } },
       markArea: points.value.length > 2
         ? {
@@ -189,7 +244,9 @@ const swap = () => {
     <p v-if="!points.length" class="panel__note" data-state="empty">
       No runtime has both a {{ my.label.toLowerCase() }} and a {{ mx.label.toLowerCase() }} reading yet.
     </p>
-    <ChartBase v-else :option="option" :height="520"
-      :label="`Scatter plot of each runtime's ${my.label.toLowerCase()} against its ${mx.label.toLowerCase()}`" />
+    <div v-else ref="frame">
+      <ChartBase :option="option" :height="520"
+        :label="`Scatter plot of each runtime's ${my.label.toLowerCase()} against its ${mx.label.toLowerCase()}`" />
+    </div>
   </section>
 </template>
