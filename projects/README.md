@@ -1,73 +1,53 @@
 # Projects
 
-Six real Scratch projects, each with the first 10 seconds of a recording of a person using it,
-replayed as a benchmark (the `projects` suite): Linux on a RISC-V emulator, Doom, a Game Boy
-emulator, a fluid simulation, a 3D maze and a tower defence game.
+Real Scratch projects, each with a recording of a person using it, replayed as a benchmark (the
+`projects` suite). The projects and recordings come from TurboWarp's
+[pianola](https://github.com/TurboWarp/pianola) benchmark corpus; this suite uses 14 of them, for the
+first 300 frames of each:
 
-- `manifest.json` lists the projects: id, title, author, and the sha256 of the `project.json` the
-  recording belongs to.
-- `recordings/<id>.json` is the recorded play: the frame rate, the number of frames, how many
-  scheduler ticks ran in each frame (`passes`), and the inputs with the frame they happened on
-  (green flag, mouse, keys, wheel, `ask` answers, slider changes).
+- emulators: Linux on a RISC-V emulator, a Game Boy, a NES and a BBC Micro;
+- simulations: Navier Stokes, Particle Lenia, the Game of Life and flow-field pathfinding;
+- 3D and maths: a ray tracer, a 3D renderer and an OBJ importer;
+- games: Goopy, Bloons TD and Doom.
 
-The projects themselves aren't committed. The suite downloads them into `.cache/projects` when it
-builds (not with `--offline`), or `bun run fetch-projects` does. A project whose `project.json` no
-longer matches the manifest has been edited since it was recorded, so it is skipped.
+`manifest.json` lists them: id, title, author, and the SHA-256 of the project file the recording was
+made with. `recordings/<id>.json` is the recorded play: how many passes the scheduler made in each
+frame, and the inputs with the frame they happened before.
+
+The project files aren't committed. The suite downloads them when it builds (not with `--offline`),
+or `bun run fetch-projects` does, from the pinned copies pianola keeps
+(`blobs.turbowarp.xyz/benchmarks/v1/<sha256>.sb3`), and checks each against its hash.
 
 ```sh
 bun run bench --suite projects
 ```
 
-Each replay may take 30 seconds before it stops and reports how far it got. The suite runs each
-runtime in its default mode only, not every variant, to keep the nightly run short.
-
 ## How a replay works
 
-`src/bake.ts` writes each recording into its project, so any runtime can replay it from the green
-flag alone, with no browser and no way to send it input. It adds a sprite named "replay pointer"
-on top of the others. That sprite's green-flag script plays the recorded events, a tick at a time,
-and stands in for the mouse: a transparent 2px sprite at the recorded pointer position. The
-project's input blocks are rewired to it:
+[REPLAY.md](REPLAY.md) is the protocol. In short, the project runs frame by frame, as fast as it can,
+and each frame applies the inputs recorded for it and makes exactly the passes over the threads the
+recording made, so every runtime does the same work. Time is a virtual clock that moves one frame per
+frame, random numbers are seeded, sound is off, and waiting or running without screen refresh behaves
+as on an infinitely fast machine.
 
-- `mouse x`, `mouse y`, `mouse down?`, `key _ pressed?` and `answer` read what the pointer keeps;
-- "mouse-pointer" in the touching, distance, go to, glide and point towards menus is the pointer;
-- `when _ key pressed`, `when this sprite clicked` and `when stage clicked` are broadcasts the
-  pointer sends (a click goes to the sprites under the pointer);
-- `ask and wait` waits for the recorded answer;
-- `stop all` stops every other script and deletes clones but leaves the replay running;
-- slider changes the recording made set the variable.
+Each replay reports:
 
-Events are placed by tick, not by frame, so they reach the project at the same point in its run
-however many ticks a runtime fits into each frame. Frames are paced as usual, at 30 fps for every
-runtime (a TurboWarp frame rate or turbo setting is removed). A project that redraws every tick plays
-in real time, so a runtime that keeps up takes about as long as the replayed frames at 30 fps (the
-report's "recorded" column; twice the recorded time for a 60 fps recording), and one that can't
-takes longer. A project that doesn't redraw runs as many ticks per frame as the runtime fits,
-so a fast runtime can finish well ahead of the recording. A runtime with only a headless launcher
-(rust-vm) has no renderer and may not pace frames at all, so its results are marked "(headless)"
-and aren't comparable with the others.
+- **script time**, the time spent stepping frames without drawing: the speed, which the overall score
+  counts (each project as much as two benchmarks);
+- drawing time and wall time;
+- the frames it got through in its 30 seconds, of the recording's 300;
+- frames that made a different number of passes than recorded (**drifted**): those did different
+  work, and a replay with more than 1% of them isn't scored;
+- a hash of the project's state every 30 frames and at the end. The same runtime should always give
+  the same hash, so a change between versions means it now computes something else; runtimes that
+  share an implementation (everything in the browser runner) can be compared with Scratch too.
 
-A run whose biggest process grows past 6 GB (`BENCH_MEMORY_LIMIT_MB`) is stopped and
-reported as an error, so a runtime that leaks can't take the machine down with it.
+Runtimes take part when their launcher can replay (`replay` in `src/runtimes/types.ts`): every
+scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), and forkphorus
+through its own page (`runtimes/forkphorus/bench.html`, which patches its frame loop as it serves it).
+A native runtime takes part by implementing `--replay` (REPLAY.md). The rest are skipped.
 
-Each project reports how long the replay took, how many ticks it got through, the longest gap between
-two ticks (its worst frame), how many frames took longer than 50 ms, and how long it took to load.
-
-Some things are approximations, the same on every runtime:
-
-- Real key and click hats leave a script that's still running alone; the broadcasts that replace
-  them restart it. A key script that waits only starts on a fresh press (not on a held key's
-  repeats), but pressing again while it runs restarts it, and a click restarts that sprite's
-  running click scripts in its other clones.
-- A click reaches every clickable sprite under the pointer, including fully ghosted ones, not just
-  the top one. Dragging sprites isn't replayed.
-- `key _ pressed?` with a reporter in its slot checks the key that reporter gives, so "any", key
-  codes and Scratch's first-letter rule for longer text aren't handled there. Makey Makey hats
-  never fire.
-- `stop all` lets scripts later in the same tick run one more step, and a clone made in that step
-  survives. Inside a custom block run without screen refresh, it can spin for up to half a second
-  first.
-- The pointer moving counts as a visual change, so it ends a frame where a real mouse move wouldn't.
-- Turbo mode changes in a recording are ignored.
+A run whose biggest process grows past 6 GB (`BENCH_MEMORY_LIMIT_MB`) is stopped and reported as an
+error, so a runtime that leaks can't take the machine down with it.
 
 The projects are by their authors on scratch.mit.edu, shared under CC BY-SA 2.0.

@@ -80,16 +80,31 @@ export interface LatestRuntime {
   parity: (ParitySummary & { timestamp: string; stale: boolean }) | null;
 }
 
+/** One recorded project replayed in one runtime (projects/REPLAY.md). */
 export interface ProjectResult {
   /** Set when the replay failed; the rest is then empty. */
   error: string | null;
-  ms: Summary | null;
-  recorded_ms: number | null;
-  ticks: number | null;
-  recorded_ticks: number | null;
-  worst_ms: Summary | null;
-  long_frames: number | null;
-  load_ms: Summary | null;
+  /** The project's title (results from before titles were recorded have none). */
+  title: string | null;
+  /** Time spent stepping frames, without drawing: the runtime's speed on the project. */
+  script_ms: Summary | null;
+  /** Time spent drawing the stage. */
+  draw_ms: Summary | null;
+  /** Real time for the frames, back to back. */
+  wall_ms: Summary | null;
+  /** Frames replayed, of the recording's; fewer when it ran out of time. */
+  frames: number | null;
+  recorded_frames: number | null;
+  /** Frames that made a different number of passes than recorded: different work. */
+  drifted: number | null;
+  /** The project's state through the replay; a runtime computing something else differs. */
+  hash: string | null;
+  /** Older results, from replays in real time. */
+  ms?: Summary | null;
+  recorded_ms?: number | null;
+  ticks?: number | null;
+  recorded_ticks?: number | null;
+  long_frames?: number | null;
 }
 
 export interface LatestProjects {
@@ -137,6 +152,8 @@ export interface History {
 export interface ScoreSeries {
   total: (number | null)[];
   categories: Record<string, (number | null)[]>;
+  /** The real-projects score (ticks per ms of script time), where a run has projects. */
+  projects: (number | null)[];
   coverage: (number | null)[];
 }
 

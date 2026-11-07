@@ -21,22 +21,22 @@ export interface ParityData {
   }[];
 }
 
-/** One recorded project replayed (see src/bake.ts). */
+/** One recorded project replayed (see runtimes/chromium/index.html `replay`). */
 export type ProjectRun =
   | {
-    /** Real time the replay took. */
-    ms: number;
-    /** Real time the recording took; a runtime that keeps up takes about this long. */
-    recorded_ms: number;
-    /** Scheduler ticks replayed, of the recording's; fewer when it ran out of time. */
-    ticks: number;
-    recorded_ticks: number;
-    /** The longest gap between two ticks: the worst frame. */
-    worst_ms: number;
-    /** Gaps between ticks longer than 50 ms: frames that couldn't keep up. */
-    long_frames: number;
-    /** From starting the runtime to the replay starting. */
-    load_ms?: number;
+    /** Time spent running scripts: the speed. */
+    script_ms: number;
+    /** Time spent drawing the stage. */
+    draw_ms: number;
+    /** Real time the replay took, frames back to back. */
+    wall_ms: number;
+    /** Frames replayed, of the recording's; fewer when it ran out of time. */
+    frames: number;
+    recorded_frames: number;
+    /** Frames that made a different number of passes than recorded. */
+    drifted: number;
+    /** A hash of the project's state through the replay: a runtime that computes something else differs. */
+    hash: string;
   }
   | { error: string };
 
@@ -47,8 +47,6 @@ export interface Suite<T = unknown> {
   runs: number;
   isDone(line: string): boolean;
   parse(lines: string[]): T;
-  /** Run with the other launcher when a runtime doesn't have this one. */
-  anyLauncher?: boolean;
   /** Run each runtime in its default mode only, not every variant. */
   defaultVariantOnly?: boolean;
 }
@@ -118,15 +116,18 @@ export const parity: Suite<ParityData> = {
   },
 };
 
-const PROJECT_LINE = /^(\d+) \| ([\d.]+) \| (\d+)\/(\d+) \| ([\d.]+) \| (\d+) \| (\d+)$/;
+const PROJECT_LINE =
+  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| ([0-9a-f]+)$/;
 
-/** Real projects replaying recorded play, baked into each project (src/bake.ts). One sb3 per run. */
+/**
+ * Real projects, each replaying a recording of someone using it, frame by frame and the same in
+ * every runtime, the way TurboWarp's pianola benchmark does. One project per run of the runtime.
+ */
 export const projects: Suite<Record<string, ProjectRun>> = {
   id: "projects",
   source: "projects",
   launcher: "gui",
-  anyLauncher: true,
-  // Each project plays in real time, so every variant would add minutes to the nightly run.
+  // Only runtimes whose launcher can replay (projects/REPLAY.md) run it.
   defaultVariantOnly: true,
   runs: 1,
   isDone: (line) => line === "DONE",
@@ -134,15 +135,20 @@ export const projects: Suite<Record<string, ProjectRun>> = {
     const out: Record<string, ProjectRun> = {};
     for (const line of lines) {
       const m = PROJECT_LINE.exec(line);
-      if (!m) continue;
-      out[m[1]] = {
-        ms: Number(m[2]),
-        ticks: Number(m[3]),
-        recorded_ticks: Number(m[4]),
-        worst_ms: Number(m[5]),
-        long_frames: Number(m[6]),
-        recorded_ms: Number(m[7]),
-      };
+      if (m) {
+        out[m[1]] = {
+          script_ms: Number(m[2]),
+          draw_ms: Number(m[3]),
+          wall_ms: Number(m[4]),
+          frames: Number(m[5]),
+          recorded_frames: Number(m[6]),
+          drifted: Number(m[7]),
+          hash: m[8],
+        };
+        continue;
+      }
+      const e = /^(\d+) \| error \| (.*)$/.exec(line);
+      if (e) out[e[1]] = { error: e[2] };
     }
     return out;
   },

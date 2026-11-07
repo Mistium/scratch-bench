@@ -2,6 +2,9 @@
 import type { ProjectResult } from "#shared/types";
 import { projectTitle } from "#shared/projects";
 
+const titleOf = (id: string) =>
+  runtimes.value.map((r) => r.projects[id]?.title).find(Boolean) ?? projectTitle(id);
+
 const { host } = useBenchState();
 const { data: latest } = await useLatestData(host);
 const shown = useShown();
@@ -12,40 +15,56 @@ const runtimes = computed(() =>
 const ids = computed(() => [
   ...new Set(runtimes.value.flatMap((r) => Object.keys(r.projects))),
 ]);
-const recorded = (id: string) =>
-  runtimes.value.map((r) => r.projects[id]?.recorded_ms).find((x) =>
-    typeof x === "number"
-  ) ?? null;
+const recordedFrames = (id: string) =>
+  runtimes.value.map((r) => r.projects[id]?.recorded_frames).find((x) => typeof x === "number") ?? null;
 
 const cut = (p: ProjectResult) =>
-  p.ticks !== null && p.recorded_ticks !== null && p.ticks < p.recorded_ticks;
+  p.frames != null && p.recorded_frames != null && p.frames < p.recorded_frames;
 
-const cell = (p: ProjectResult | undefined) => {
+/**
+ * Script time for the whole recording: measured when the replay finished, scaled up from the
+ * frames it reached when it ran out of time.
+ */
+const scriptMs = (p: ProjectResult | undefined): number | null =>
+  p && !p.error && p.script_ms && p.frames && p.recorded_frames
+    ? p.script_ms.median * (p.recorded_frames / p.frames)
+    : null;
+
+// Scratch's own result, for spotting runtimes that computed something else.
+const scratch = computed(() => latest.value?.projects?.find((r) => r.id === "scratch"));
+
+const cell = (id: string, p: ProjectResult | undefined) => {
   if (!p) return { text: "-", state: "missing" };
-  if (p.error || !p.ms) return { text: "error", state: "error", title: p.error };
-  if (cut(p)) {
-    return {
-      text: `${p.ticks}/${p.recorded_ticks} ticks`,
-      state: "cut",
-      title: "Ran out of time before the recording ended",
-    };
+  if (p.error) return { text: "error", state: "error", title: p.error };
+  const script = scriptMs(p);
+  if (script === null) {
+    // Older results, from replays in real time.
+    return p.ms ? { text: fmtMs(p.ms.median), state: "ok", title: "real time (an older run)" } : { text: "-", state: "missing" };
   }
+  const base = scratch.value?.projects[id];
+  const differs = !!base?.hash && !!p.hash && base.hash !== p.hash && !cut(p) && !cut(base);
+  const notes = [
+    `${fmtMs(p.draw_ms?.median)} drawing, ${fmtMs(p.wall_ms?.median)} in all`,
+    cut(p) ? `ran out of time at frame ${p.frames} of ${p.recorded_frames}, so this is scaled up` : "",
+    p.drifted ? `${p.drifted} frames made a different number of passes than recorded` : "",
+    differs ? "ended in a different state from Scratch" : "",
+  ].filter(Boolean);
   return {
-    text: fmtMs(p.ms.median),
-    state: "ok",
-    title: p.long_frames ? `${p.long_frames} frames took longer than 50 ms` : undefined,
+    text: `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${cut(p) ? "~" : ""}${fmtMs(script)}`,
+    state: cut(p) ? "cut" : "ok",
+    title: notes.join("; "),
   };
 };
 
 const totals = computed(() =>
   runtimes.value.map((r) => {
     const all = Object.values(r.projects);
-    const done = all.filter((p) => !p.error && p.ms && !cut(p));
+    const timed = all.map(scriptMs).filter((x): x is number => x !== null);
     return {
       id: r.id,
-      full: done.length,
+      timed: timed.length,
       total: all.length,
-      ms: done.reduce((n, p) => n + p.ms!.median, 0),
+      ms: timed.reduce((n, x) => n + x, 0),
     };
   })
 );
@@ -57,8 +76,10 @@ const totals = computed(() =>
     <header class="panel__header">
       <h2 id="projects-title" class="panel__title">Real projects</h2>
       <p class="panel__subtitle">
-        Time to replay the first 10 seconds of a recording of someone using each project. A runtime that keeps up takes about
-        the recorded time; slower ones take longer, and one that runs out of time shows how many ticks it reached.
+        Script time to replay the start of a recording of someone using each project, frame by frame and the same in every
+        runtime (like TurboWarp's pianola): the time spent running the project's scripts, without drawing. Lower is faster.
+        ~ scaled up from a replay that ran out of time; ≠ ended in a different state from Scratch; * did different work from
+        the recording. Hover a cell for drawing and total time.
       </p>
     </header>
 
@@ -67,7 +88,7 @@ const totals = computed(() =>
         <thead>
           <tr>
             <th scope="col">Project</th>
-            <th scope="col" class="projects__num">Recorded</th>
+            <th scope="col" class="projects__num">Frames</th>
             <th v-for="r in runtimes" :key="r.id" scope="col"
               class="projects__num">
               <span class="runtime-dot" :data-runtime="r.id" /> {{ r.name }}<template
@@ -77,28 +98,29 @@ const totals = computed(() =>
         </thead>
         <tbody>
           <tr v-for="id in ids" :key="id">
-            <th scope="row">{{ projectTitle(id) }}</th>
-            <td class="projects__num">{{ fmtMs(recorded(id)) }}</td>
+            <th scope="row">{{ titleOf(id) }}</th>
+            <td class="projects__num">{{ recordedFrames(id) ?? "-" }}</td>
             <td v-for="r in runtimes" :key="r.id" class="projects__num"
-              :data-state="cell(r.projects[id]).state"
-              :title="cell(r.projects[id]).title ?? undefined">
-              {{ cell(r.projects[id]).text }}
+              :data-state="cell(id, r.projects[id]).state"
+              :title="cell(id, r.projects[id]).title ?? undefined">
+              {{ cell(id, r.projects[id]).text }}
             </td>
           </tr>
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">Replayed in full</th>
+            <th scope="row">Total script time</th>
             <td />
             <td v-for="t in totals" :key="t.id" class="projects__num">
-              {{ t.full }}/{{ t.total }}<template v-if="t.full">, {{ fmtMs(t.ms) }}</template>
+              <template v-if="t.timed">{{ fmtMs(t.ms) }}<template v-if="t.timed < t.total"> ({{ t.timed }}/{{ t.total }})</template></template>
+              <template v-else>-</template>
             </td>
           </tr>
         </tfoot>
       </table>
     </div>
     <p class="parity__note">
-      Headless runtimes have no renderer and may not pace frames, so they are not comparable with the others.
+      Only runtimes that can replay a recording frame by frame (projects/REPLAY.md in the repository) take part.
     </p>
   </section>
 </template>

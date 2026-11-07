@@ -7,6 +7,7 @@ import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
 import { measureSuite, statsOf } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
+import { BUDGET_MS } from "./projects.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
 import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
@@ -231,14 +232,15 @@ const runSuite = async (
     kind = "gui";
     launcher = rt.gui;
   }
-  if (!launcher && suite.anyLauncher && rt.headless) {
-    kind = "headless";
-    launcher = rt.headless;
-  }
   if (!launcher) {
     const skipped = suite.launcher === "gui"
       ? "no rendered (gui) launcher for this runtime yet"
       : `no ${suite.launcher} launcher`;
+    log(`${suite.id} / ${label}: skipped, ${skipped}`);
+    return { ...base, skipped };
+  }
+  if (suite.id === "projects" && !launcher.replay) {
+    const skipped = "can't replay recordings yet (projects/REPLAY.md)";
     log(`${suite.id} / ${label}: skipped, ${skipped}`);
     return { ...base, skipped };
   }
@@ -260,16 +262,21 @@ const runSuite = async (
     log,
   };
   if (built.projects) {
-    // Each project is its own sb3 and its own run of the runtime.
+    // Each project is its own run of the runtime, replaying its recording.
     const results: Record<string, unknown> = {};
     for (const p of built.projects) {
       log(`  ${p.id} ${p.title}`);
-      const measured = await measureSuite(suite, launcher, p.sb3, options);
+      const replay = { recording: p.recording, id: p.id, budgetMs: BUDGET_MS };
+      const replaying = {
+        ...launcher,
+        command: (sb3: string, v?: Variant | null) => launcher.replay!(sb3, replay, v),
+      };
+      const measured = await measureSuite(suite, replaying, p.sb3, options);
       base.runs.push(...measured.runs);
       base.runtime.display = measured.display;
       results[p.id] = {
-        recorded_ms: p.recordedMs,
-        recorded_ticks: p.ticks,
+        title: p.title,
+        recorded_frames: p.frames,
         ...(measured.results as object),
       };
     }

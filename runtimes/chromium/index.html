@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <div id="stage" style="width:480px;height:360px"></div>
 <canvas id="c" width="480" height="360"></canvas>
+<script src="/replay.js"></script>
 <script>
 const loadScript = (src) =>
   new Promise((resolve, reject) => {
@@ -12,58 +13,62 @@ const loadScript = (src) =>
     document.head.appendChild(s);
   });
 
-window.start = async (kind, scripts, compiler = true) => {
-  let vm;
-  {
-    for (
-      const src of scripts ?? [
-        "/node_modules/@scratch/scratch-vm/dist/web/scratch-vm.js",
-        "/node_modules/@scratch/scratch-render/dist/web/scratch-render.js",
-        "/node_modules/@scratch/scratch-svg-renderer/dist/web/scratch-svg-renderer.js",
-        "/node_modules/@scratch/scratch-storage/dist/web/scratch-storage.js",
-        "/audio.js",
-      ]
-    ) await loadScript(src);
-    // ClipCC names its renderer's global differently, and takes a config object whose extension manager its GUI
-    // supplies.
-    if (kind === "clipcc") window.ScratchRender = window.ClipCCRender;
-    vm = kind === "clipcc"
-      ? new VirtualMachine({
-        extensionManager: {
-          emitEvent() {},
-          emitEventToAll() {},
-          getExtensionLoadOrder: (ids) => ids,
-          loadExtensionsWithMode: (ids) =>
-            ids.forEach((id) =>
-              vm.extensionManager.isExtensionLoaded(id) ||
-              vm.extensionManager.loadExtensionIdSync(id)
-            ),
-        },
-      })
-      : new VirtualMachine();
-    // The port's code refers to the editor's global `vm`.
-    if (kind === "penguinmod-port") window.vm = vm;
-    if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {
-      vm.setCompilerOptions({ enabled: compiler, warpTimer: false });
-    }
-    const audio = new ScratchAudio();
-    vm.attachAudioEngine(audio);
-    await audio.audioContext.resume();
-    const Storage = ScratchStorage.ScratchStorage || ScratchStorage.default ||
-      ScratchStorage;
-    vm.attachStorage(new Storage());
-    vm.attachRenderer(
-      new (ScratchRender.default || ScratchRender)(
-        document.getElementById("c"),
-      ),
-    );
-    const SVG = ScratchSVGRenderer.default || ScratchSVGRenderer;
-    vm.attachV2BitmapAdapter(new SVG.BitmapAdapter());
-    await vm.loadProject(await (await fetch("/project.sb3")).arrayBuffer());
-    vm.setTurboMode(false);
-    vm.start();
-    vm.greenFlag();
+const makeVM = async (kind, scripts, compiler, audio) => {
+  for (
+    const src of scripts ?? [
+      "/node_modules/@scratch/scratch-vm/dist/web/scratch-vm.js",
+      "/node_modules/@scratch/scratch-render/dist/web/scratch-render.js",
+      "/node_modules/@scratch/scratch-svg-renderer/dist/web/scratch-svg-renderer.js",
+      "/node_modules/@scratch/scratch-storage/dist/web/scratch-storage.js",
+      "/audio.js",
+    ]
+  ) await loadScript(src);
+  // ClipCC names its renderer's global differently, and takes a config object whose extension manager its GUI
+  // supplies.
+  if (kind === "clipcc") window.ScratchRender = window.ClipCCRender;
+  const vm = kind === "clipcc"
+    ? new VirtualMachine({
+      extensionManager: {
+        emitEvent() {},
+        emitEventToAll() {},
+        getExtensionLoadOrder: (ids) => ids,
+        loadExtensionsWithMode: (ids) =>
+          ids.forEach((id) =>
+            vm.extensionManager.isExtensionLoaded(id) ||
+            vm.extensionManager.loadExtensionIdSync(id)
+          ),
+      },
+    })
+    : new VirtualMachine();
+  // The port's code refers to the editor's global `vm`.
+  if (kind === "penguinmod-port") window.vm = vm;
+  if (kind !== "scratch" && typeof vm.setCompilerOptions === "function") {
+    vm.setCompilerOptions({ enabled: compiler, warpTimer: false });
   }
+  if (audio) {
+    const engine = new ScratchAudio();
+    vm.attachAudioEngine(engine);
+    await engine.audioContext.resume();
+  }
+  const Storage = ScratchStorage.ScratchStorage || ScratchStorage.default ||
+    ScratchStorage;
+  vm.attachStorage(new Storage());
+  vm.attachRenderer(
+    new (ScratchRender.default || ScratchRender)(
+      document.getElementById("c"),
+    ),
+  );
+  const SVG = ScratchSVGRenderer.default || ScratchSVGRenderer;
+  vm.attachV2BitmapAdapter(new SVG.BitmapAdapter());
+  return vm;
+};
+
+window.start = async (kind, scripts, compiler = true) => {
+  const vm = await makeVM(kind, scripts, compiler, true);
+  await vm.loadProject(await (await fetch("/project.sb3")).arrayBuffer());
+  vm.setTurboMode(false);
+  vm.start();
+  vm.greenFlag();
   let printed = 0;
   let idleSince = null;
   setInterval(() => {
@@ -83,5 +88,245 @@ window.start = async (kind, scripts, compiler = true) => {
       }
     }
   }, 50);
+};
+
+// ---- replaying a recording, the way TurboWarp's pianola benchmark does (github.com/TurboWarp/pianola) ----
+//
+// The project runs one frame at a time, as fast as it can. Each frame applies the inputs recorded
+// for it and makes exactly the number of passes over the threads that the recording made, so every
+// runtime does the same work however fast it is. What a project can observe is made deterministic:
+// Date is a virtual clock that moves one frame interval per frame (and stands still within one),
+// and Math.random is seeded. performance.now() is left alone for the measurements. Sound is off.
+
+/**
+ * Makes each frame take a given number of passes over the threads, instead of as many as fit in
+ * 75% of the frame or until a redraw is requested, so every runtime does the same work. (The
+ * schedulers stop for a redraw outside turbo mode, so the replay runs in turbo mode.) Warp-mode
+ * scripts behave as on an infinitely fast machine: loops never stop for time, and blocks that wait
+ * yield at once, since nothing they wait on can change within a frame. Returns how many passes the
+ * frame made.
+ */
+const WARP_LIMIT_MS = 10_000;
+
+const patchSequencer = (runtime, passesFor) => {
+  const sequencer = runtime.sequencer;
+  const stepThread = sequencer.stepThread;
+  let inside = 0;
+  let passes = 0;
+  let threadStart = 0;
+  // NaN makes the interpreter's "under 500 ms, keep spinning a wait" and "over 500 ms, stop a loop"
+  // checks both false: waits yield, loops keep going. A script that never finishes would hang the
+  // replay, so it fails after WARP_LIMIT_MS instead (the interpreter checks; compiled code may not).
+  const warpTimer = {
+    start() {},
+    timeElapsed() {
+      if (performance.now() - threadStart > WARP_LIMIT_MS) {
+        throw new Error(`a script running without screen refresh ran for ${WARP_LIMIT_MS / 1000} s`);
+      }
+      return NaN;
+    },
+  };
+  sequencer.stepThread = function (thread) {
+    if (inside === 0) threadStart = performance.now();
+    thread.warpTimer = warpTimer;
+    inside++;
+    try {
+      return stepThread.call(this, thread);
+    } finally {
+      inside--;
+    }
+  };
+  sequencer.timer = {
+    start() {
+      passes = 0;
+    },
+    time: () => performance.now(),
+    timeElapsed() {
+      if (inside > 0) return Infinity;
+      if (passes < passesFor()) {
+        passes++;
+        return 0;
+      }
+      return Infinity;
+    },
+  };
+  return () => passes;
+};
+
+/** SVG costumes finish loading after loadProject() resolves; their bounds are wrong until then. */
+const waitForSkins = async (renderer) => {
+  // Empty SVGs never set _svgImageLoaded.
+  const pending = (skin) =>
+    skin && skin._svgImage && !skin._svgImageLoaded && skin.size[0] > 0 && skin.size[1] > 0;
+  for (const until = performance.now() + 60_000; performance.now() < until;) {
+    const waiting = renderer._allSkins.filter(pending);
+    if (!waiting.length) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // An image that finished loading and still isn't ready is broken, and will stay that way.
+    if (waiting.every((skin) => skin._svgImage.complete && pending(skin))) return;
+  }
+};
+
+const { fnv1a, round } = BenchReplay;
+
+/** A hash of what the project computed: every sprite and clone, and every variable and list. */
+const hashState = (vm) => {
+  const groups = {};
+  for (const t of vm.runtime.targets) {
+    const name = t.isStage ? "(stage)" : t.getName();
+    (groups[name] ??= []).push([
+      t.isOriginal,
+      round(t.x), round(t.y), round(t.direction), round(t.size),
+      t.currentCostume, t.visible, t.rotationStyle,
+      Object.keys(t.effects ?? {}).sort().map((k) => round(t.effects[k])),
+      Object.keys(t.variables).sort().map((id) => {
+        const v = t.variables[id];
+        return [v.name, Array.isArray(v.value) ? v.value.map(round) : round(v.value)];
+      }),
+    ]);
+  }
+  return fnv1a(JSON.stringify(Object.keys(groups).sort().map((n) => [n, groups[n]])));
+};
+
+/**
+ * Replays /recording.json against /project.sb3 and returns the result line:
+ *   <id> | <script ms> | <draw ms> | <wall ms> | <frames>/<recorded frames> | <drifted frames> | <hash>
+ * Script time is the time spent stepping, without drawing; drifted frames made a different number
+ * of passes than recorded (a runtime whose scheduler doesn't fit the patch); the hash covers the
+ * state every 30 frames and at the end, so a runtime that computes something different shows up.
+ */
+window.replay = async (kind, scripts, compiler, id, budgetMs) => {
+  const det = BenchReplay;
+  det.install();
+  const vm = await makeVM(kind, scripts, compiler, false);
+  // Nobody watches a replay: hidden, the stage still draws (and touching color still reads it), but
+  // the page isn't composited after every frame, which can cost more than the frame itself.
+  document.getElementById("c").style.visibility = "hidden";
+  const recording = await (await fetch("/recording.json")).json();
+  await vm.loadProject(await (await fetch("/project.sb3")).arrayBuffer());
+  const renderer = vm.runtime.renderer;
+  await waitForSkins(renderer);
+
+  const runtime = vm.runtime;
+  // The project's own frame rate where the runtime has one (0, the screen's rate, runs as 60).
+  const fps = runtime.frameLoop
+    ? runtime.frameLoop.framerate || 60
+    : runtime.compatibilityMode === false ? 60 : 30;
+  const interval = 1000 / fps;
+  runtime.currentStepTime = interval;
+  vm.setTurboMode(true);
+  let frame = 0;
+  const passesOf = patchSequencer(runtime, () => recording.passes[frame] ?? 1);
+  let drawMs = 0;
+  const draw = renderer.draw;
+  renderer.draw = function () {
+    const t = performance.now();
+    draw.call(this);
+    drawMs += performance.now() - t;
+  };
+
+  const client = (x, y) => ({ x: x + runtime.stageWidth / 2, y: runtime.stageHeight / 2 - y });
+  const mouse = { press: null, dragId: null, start: null, sprite: null };
+  const startDrag = (x, y) => {
+    const c = client(x, y);
+    const drawable = renderer.pick(c.x, c.y);
+    if (drawable === -1 || drawable === false) return;
+    const targetId = vm.getTargetIdForDrawableId(drawable);
+    const target = targetId && runtime.getTargetById(targetId);
+    if (!target || !target.draggable) return;
+    target.goToFront();
+    Object.assign(mouse, { dragId: targetId, start: { x, y }, sprite: { x: target.x, y: target.y } });
+    vm.startDrag(targetId);
+  };
+  const apply = (input) => {
+    switch (input.type) {
+      case "greenFlag": return vm.greenFlag();
+      case "stop": return vm.stopAll();
+      // Always in turbo mode (see patchSequencer), which changes nothing else a project can see.
+      case "turbo": return;
+      case "key":
+        return vm.postIOData("keyboard", { key: input.key, keyCode: input.keyCode, isDown: input.down });
+      case "wheel": return vm.postIOData("mouseWheel", { deltaX: input.dx, deltaY: input.dy });
+      case "answer": return runtime.emit("ANSWER", input.text);
+      case "variable": {
+        const target = input.target === null
+          ? runtime.getTargetForStage()
+          : runtime.getSpriteTargetByName(input.target);
+        if (target?.variables[input.id]) vm.setVariableValue(target.id, input.id, input.value);
+        return;
+      }
+      case "mouse": {
+        const data = { ...client(input.x, input.y), canvasWidth: runtime.stageWidth, canvasHeight: runtime.stageHeight };
+        if (!("down" in input)) {
+          if (mouse.press && mouse.dragId === null) {
+            if (Math.hypot(input.x - mouse.press.x, input.y - mouse.press.y) > det.DRAG_DISTANCE) {
+              startDrag(input.x, input.y);
+              mouse.press = null;
+            }
+          } else if (mouse.dragId !== null) {
+            vm.postSpriteInfo({
+              x: input.x - mouse.start.x + mouse.sprite.x,
+              y: input.y - mouse.start.y + mouse.sprite.y,
+              force: true,
+            });
+          }
+          return vm.postIOData("mouse", data);
+        }
+        data.isDown = input.down;
+        data.button = input.button;
+        if (input.down) {
+          if (input.button === 0 || input.button === undefined) mouse.press = { x: input.x, y: input.y, frame };
+          return vm.postIOData("mouse", data);
+        }
+        mouse.press = null;
+        data.wasDragged = mouse.dragId !== null;
+        vm.postIOData("mouse", data);
+        if (mouse.dragId !== null) {
+          vm.stopDrag(mouse.dragId);
+          mouse.dragId = null;
+        }
+        return;
+      }
+    }
+  };
+
+  const holdFrames = Math.ceil(det.DRAG_HOLD_MS / interval);
+  const hashes = [];
+  let checkMs = 0;
+  let scriptMs = 0;
+  let drifted = 0;
+  let next = 0;
+  det.seed(1);
+  const start = performance.now();
+  while (frame < recording.frames && performance.now() - start - checkMs < budgetMs) {
+    det.setTime(det.EPOCH + frame * interval);
+    while (next < recording.inputs.length && recording.inputs[next].frame <= frame) {
+      apply(recording.inputs[next++]);
+    }
+    if (mouse.press && mouse.dragId === null && frame - mouse.press.frame >= holdFrames) {
+      startDrag(mouse.press.x, mouse.press.y);
+      mouse.press = null;
+    }
+    const before = drawMs;
+    const t = performance.now();
+    runtime._step();
+    scriptMs += performance.now() - t - (drawMs - before);
+    // Scratch's own VM leaves drawing to the editor, once per frame; TurboWarp's draws in _step.
+    if (drawMs === before) renderer.draw();
+    if (passesOf() !== (recording.passes[frame] ?? 1)) drifted++;
+    frame++;
+    if (frame % det.CHECK_INTERVAL === 0) {
+      const c = performance.now();
+      hashes.push(hashState(vm));
+      checkMs += performance.now() - c;
+    }
+    await det.yieldToEventLoop();
+  }
+  // Wait for the GPU to finish what was queued, so it counts too.
+  const gl = renderer.gl;
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  const wallMs = performance.now() - start - checkMs;
+  hashes.push(hashState(vm));
+  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes });
 };
 </script>

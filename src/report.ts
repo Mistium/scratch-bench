@@ -162,36 +162,36 @@ export const renderReport = (results: SuiteResult[]): string => {
   );
   if (projects.length) {
     type Replayed = {
-      ms?: Summary;
-      recorded_ms?: number;
-      ticks?: number;
-      recorded_ticks?: number;
-      long_frames?: number;
+      title?: string;
+      script_ms?: Summary;
+      frames?: number;
+      recorded_frames?: number;
+      drifted?: number;
+      hash?: string;
       error?: string;
     };
     const resultsOf = (r: SuiteResult) => (r.results as Record<string, Replayed>) ?? {};
-    // A headless launcher has no renderer and may not pace frames, so it isn't comparable.
-    const nameOf = (r: SuiteResult) =>
-      labelOf(r.runtime.name, r.runtime.variant) +
-      (r.runtime.launcher === "headless" ? " (headless)" : "");
+    const nameOf = (r: SuiteResult) => labelOf(r.runtime.name, r.runtime.variant);
     const ids = [...new Set(projects.flatMap((r) => Object.keys(resultsOf(r))))];
+    const scratch = projects.find((r) => r.runtime.id === "scratch");
+    const cut = (p: Replayed) => p.frames! < p.recorded_frames!;
     out.push(
-      "Projects: median ms to replay each recording (recorded: the replayed frames at 30 fps; " +
-        "cut short: ticks reached)\n",
+      "Projects: median ms spent running scripts to replay each recording (frames reached when it ran " +
+        "out of time; ≠ computed something different from Scratch; * drifted from the recorded passes)\n",
     );
     out.push(
       table(
-        ["project", "recorded", ...projects.map(nameOf)],
+        ["project", ...projects.map(nameOf)],
         ids.map((id) => [
-          id,
-          num(projects.map((r) => resultsOf(r)[id]?.recorded_ms).find((x) => x !== undefined) ?? NaN),
+          projects.map((r) => resultsOf(r)[id]?.title).find(Boolean) ?? id,
           ...projects.map((r) => {
             const p = resultsOf(r)[id];
             if (!p) return "-";
             if (p.error) return "error";
-            return p.ticks! < p.recorded_ticks!
-              ? `${p.ticks}/${p.recorded_ticks} ticks`
-              : `${num(p.ms!.median)}${p.long_frames ? ` (${p.long_frames} long frames)` : ""}`;
+            const base = scratch && resultsOf(scratch)[id];
+            const marks = (base?.hash && !cut(p) && !cut(base) && base.hash !== p.hash ? "≠" : "") +
+              (p.drifted ? "*" : "");
+            return `${marks}${cut(p) ? `${p.frames}/${p.recorded_frames} frames` : num(p.script_ms!.median)}`;
           }),
         ]),
       ),
@@ -199,11 +199,11 @@ export const renderReport = (results: SuiteResult[]): string => {
     out.push("");
     for (const r of projects) {
       const all = Object.values(resultsOf(r));
-      const done = all.filter((p) => !p.error && p.ticks === p.recorded_ticks);
+      const done = all.filter((p) => !p.error && !cut(p));
       out.push(
         `${nameOf(r)}: ${done.length}/${all.length} replayed in full, ${
-          num(done.reduce((n, p) => n + p.ms!.median, 0))
-        } ms in total, ${all.filter((p) => p.error).length} errors`,
+          num(done.reduce((n, p) => n + p.script_ms!.median, 0))
+        } ms of scripts in total, ${all.filter((p) => p.error).length} errors`,
       );
     }
     out.push("");

@@ -140,13 +140,19 @@ export const parseResult = (
       if (!isObject(value)) continue;
       projects[id] = {
         error: typeof value.error === "string" ? value.error : null,
+        title: typeof value.title === "string" ? value.title : null,
+        script_ms: toSummary(value.script_ms),
+        draw_ms: toSummary(value.draw_ms),
+        wall_ms: toSummary(value.wall_ms),
+        frames: num(value.frames),
+        recorded_frames: num(value.recorded_frames),
+        drifted: num(value.drifted),
+        hash: typeof value.hash === "string" ? value.hash : null,
         ms: toSummary(value.ms),
         recorded_ms: num(value.recorded_ms),
         ticks: num(value.ticks),
         recorded_ticks: num(value.recorded_ticks),
-        worst_ms: toSummary(value.worst_ms),
         long_frames: num(value.long_frames),
-        load_ms: toSummary(value.load_ms),
       };
     }
   } else if (suite.id === "parity" && results && ok > 0) {

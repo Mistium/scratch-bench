@@ -104,18 +104,19 @@ export const measureSuite = async (
       ]),
     );
   } else if (suite.id === "projects") {
-    // One project per call: its times summarized over the runs, its tick counts from the last.
-    const ran = (datas as Record<string, ProjectRun>[])
-      .flatMap((d) => Object.values(d)) as Extract<ProjectRun, { ms: number }>[];
+    // One project per call: its times summarized over the runs, the rest from the last run.
+    const all = (datas as Record<string, ProjectRun>[]).flatMap((d) => Object.values(d));
+    const ran = all.filter((r) => !("error" in r)) as Extract<ProjectRun, { hash: string }>[];
     const last = ran.at(-1);
     results = last
       ? {
         ...last,
-        ms: summarize(ran.map((r) => r.ms)),
-        worst_ms: summarize(ran.map((r) => r.worst_ms)),
+        script_ms: summarize(ran.map((r) => r.script_ms)),
+        draw_ms: summarize(ran.map((r) => r.draw_ms)),
+        wall_ms: summarize(ran.map((r) => r.wall_ms)),
         load_ms: stats.startup_ms,
       }
-      : { error: runs.at(-1)?.error ?? "no result" };
+      : all.at(-1) ?? { error: runs.at(-1)?.error ?? "no result" };
   } else if (datas.length) {
     results = datas[datas.length - 1];
   }

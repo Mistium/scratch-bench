@@ -4,6 +4,8 @@ import {
   geometricMean,
   type Medians,
   MIN_COVERAGE,
+  PROJECT_WEIGHT,
+  projectSpeed,
   ratioToBaseline,
   scoreRuntime,
 } from "../shared/scoring.ts";
@@ -117,5 +119,41 @@ describe("ratioToBaseline", () => {
     expect(ratioToBaseline(10, 5)).toBe(2);
     expect(ratioToBaseline(null, 5)).toBeNull();
     expect(ratioToBaseline(10, 0)).toBeNull();
+  });
+});
+
+describe("scoreRuntime with real projects", () => {
+  const categoryWeights = CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0);
+
+  it("counts each project as much as two benchmarks of average weight", () => {
+    const projects = { a: 100, b: 100, c: 100 };
+    const s = scoreRuntime(all(1), "default", projects);
+    expect(s.projects?.score).toBeCloseTo(100);
+    // Benchmarks at 1 and projects at 100: the total is 100 to the projects' share of the weight.
+    const projectWeight = PROJECT_WEIGHT * 3 * (categoryWeights / BENCHMARKS.length);
+    expect(s.total).toBeCloseTo(100 ** (projectWeight / (categoryWeights + projectWeight)));
+  });
+
+  it("scores a project by frames per millisecond of script time", () => {
+    expect(projectSpeed({ error: null, frames: 300, drifted: 0, script_ms: { median: 150 } })).toBe(2);
+    expect(projectSpeed({ error: "crashed", frames: 300, script_ms: { median: 150 } })).toBeNull();
+    expect(projectSpeed({ error: null, frames: 0, script_ms: { median: 150 } })).toBeNull();
+  });
+
+  it("doesn't score a replay that did different work from the recording", () => {
+    expect(projectSpeed({ error: null, frames: 300, drifted: 3, script_ms: { median: 150 } })).toBe(2);
+    expect(projectSpeed({ error: null, frames: 300, drifted: 4, script_ms: { median: 150 } })).toBeNull();
+  });
+
+  it("leaves the total to the benchmarks for runs without projects", () => {
+    expect(scoreRuntime(all(7), "default", undefined).total).toBeCloseTo(7);
+    expect(scoreRuntime(all(7)).projects).toBeNull();
+  });
+
+  it("has no total when too few projects replayed", () => {
+    const s = scoreRuntime(all(1), "default", { a: 5, b: null, c: null, d: 5, e: 5 });
+    expect(s.projects?.coverage).toBeCloseTo(0.6);
+    expect(s.projects?.score).toBeNull();
+    expect(s.total).toBeNull();
   });
 });

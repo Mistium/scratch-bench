@@ -2,15 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILD_DIR, ROOT } from "./paths.ts";
 import { fetchProjects } from "./fetch-projects.ts";
-import { type BakedProject, bakeProjects, BUDGET_MS, manifest } from "./projects.ts";
+import { BUDGET_MS, manifest, PROJECT_FILES, type ReplayProject, replayProjects } from "./projects.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
-  /** The sb3, or for the projects suite the folder of baked projects. */
+  /** The sb3, or for the projects suite the folder of downloaded projects. */
   sb3: string;
   hash: string;
   /** The projects suite's projects, each run on its own. */
-  projects?: BakedProject[];
+  projects?: ReplayProject[];
   /** A run limit (per project) that overrides a shorter --timeout. */
   timeoutMs?: number;
 }
@@ -77,20 +77,20 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
   fs.mkdirSync(BUILD_DIR, { recursive: true });
   if (suite.id === "projects") {
     if (!o.offline) await fetchProjects(manifest(), (line) => o.log?.(`  ${line}`));
-    const projects = bakeProjects((line) => o.log?.(line));
+    const projects = replayProjects();
     if (!projects.length) {
       throw new Error("none of the projects are downloaded (bun run fetch-projects)");
     }
     const h = new Bun.CryptoHasher("sha256")
       .update(hashSource(dir))
-      .update(fs.readFileSync(path.join(ROOT, "src/bake.ts")))
-      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")));
+      .update(fs.readFileSync(path.join(ROOT, "runtimes/chromium/index.html")));
     for (const p of projects) h.update(p.id);
     return {
-      sb3: path.join(BUILD_DIR, "projects"),
+      sb3: PROJECT_FILES,
       hash: h.digest("hex").slice(0, 16),
       projects,
-      // The replay stops itself at the budget; this leaves time to load and for a stuck frame.
+      // The replay stops itself at the budget; this leaves time to load, and the runner gives up on
+      // a frame that never ends a minute after the budget.
       timeoutMs: BUDGET_MS + 120_000,
     };
   }

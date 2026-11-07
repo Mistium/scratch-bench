@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <div id="player"></div>
+<script src="/__replay.js"></script>
 <!-- Served from the root of a forkphorus checkout, so the player finds its fonts and sounds where it expects them. -->
 <script>
 const loadScript = (src) =>
@@ -54,5 +55,127 @@ window.start = async (scripts) => {
       }
     }
   }, 50);
+};
+// ---- replaying a recording (projects/REPLAY.md), like runtimes/chromium/index.html `replay` ----
+// The runner patches the frame loop in phosphorus.dist.js as it serves it, so each frame makes the
+// number of passes window.__benchFrame asks for. Input goes through the same DOM events the player
+// listens for. forkphorus's warp mode never stops for time already.
+
+const forkphorusState = (stage) => {
+  const { round, fnv1a } = BenchReplay;
+  const values = (o) => Object.keys(o ?? {}).sort().map((k) => [k, Array.isArray(o[k]) ? o[k].map(round) : round(o[k])]);
+  const of = (t) => [
+    t.name, !!t.isClone, round(t.scratchX), round(t.scratchY), round(t.direction), round(t.scale),
+    t.currentCostumeIndex, t.visible, values(t.filters), values(t.vars), values(t.lists),
+  ];
+  return fnv1a(JSON.stringify([of(stage), ...stage.children.map(of)]));
+};
+
+window.replay = async (scripts, id, budgetMs) => {
+  const det = BenchReplay;
+  det.install();
+  const bench = window.__benchFrame = { passes: 0, target: 1 };
+  // Sound is off: without an audio context forkphorus doesn't play sounds or wait for them, which
+  // it otherwise does in real time. It makes its context once, as it loads.
+  delete window.AudioContext;
+  delete window.webkitAudioContext;
+  for (const src of scripts) await loadScript(src);
+  const player = new P.player.Player();
+  player.setOptions({ turbo: false, focusOnLoad: false, autoplayPolicy: "always" });
+  document.getElementById("player").appendChild(player.root);
+  // Nobody watches a replay: hidden, the stage still draws and keeps its layout (for the pointer's
+  // position), but the page isn't composited after every frame, which costs more than the frame.
+  document.getElementById("player").style.visibility = "hidden";
+  const recording = await (await fetch("/__recording.json")).json();
+  const project = await (await fetch("/__bench.sb3")).arrayBuffer();
+  await new Promise((resolve, reject) => {
+    player.onload.subscribe(resolve);
+    player.onerror.subscribe((e) => reject(new Error("load failed: " + (e && (e.message || e)))));
+    player.loadProjectFromBuffer(project, "sb3").catch(reject);
+  });
+  const stage = player.getStage();
+  const runtime = stage.runtime;
+  // The player starts the runtime's own frame timer once the project loads; the replay steps frames
+  // itself, so stop that. The input handlers only act while the runtime counts as running.
+  runtime.pause();
+  runtime.isRunning = true;
+  const interval = 1000 / runtime.framerate;
+  let drawMs = 0;
+  const draw = stage.draw;
+  stage.draw = function () {
+    const t = performance.now();
+    draw.call(this);
+    drawMs += performance.now() - t;
+  };
+
+  const at = (x, y) => {
+    const rect = stage.canvas.getBoundingClientRect();
+    return { clientX: rect.left + (x + 240) * stage.zoom, clientY: rect.top + (180 - y) * stage.zoom };
+  };
+  const onStage = (x, y) => Math.abs(x) < 240 && Math.abs(y) < 180;
+  const apply = (input) => {
+    switch (input.type) {
+      case "greenFlag": return runtime.triggerGreenFlag();
+      case "stop": return runtime.stopAll();
+      // Frames make the recorded passes whatever the turbo setting (forkphorus.mjs).
+      case "turbo": return;
+      case "key":
+        return stage.canvas.dispatchEvent(new KeyboardEvent(input.down ? "keydown" : "keyup", {
+          key: input.key, bubbles: true, cancelable: true,
+        }));
+      case "wheel":
+        return stage.root.dispatchEvent(new WheelEvent("wheel", { deltaX: input.dx, deltaY: input.dy, bubbles: true }));
+      case "answer":
+        stage.prompt.value = input.text;
+        return stage.submitPrompt();
+      case "variable": {
+        const target = input.target === null
+          ? stage
+          : stage.children.find((c) => !c.isClone && c.name === input.target);
+        const name = target?.varIds?.[input.id];
+        if (name !== undefined) target.vars[name] = input.value;
+        return;
+      }
+      case "mouse": {
+        const type = !("down" in input) ? "mousemove" : input.down ? "mousedown" : "mouseup";
+        const target = onStage(input.x, input.y) ? stage.canvas : document.body;
+        return target.dispatchEvent(new MouseEvent(type, {
+          ...at(input.x, input.y), button: input.button ?? 0, bubbles: true, cancelable: true,
+        }));
+      }
+    }
+  };
+
+  const hashes = [];
+  let frame = 0;
+  let next = 0;
+  let checkMs = 0;
+  let scriptMs = 0;
+  let drifted = 0;
+  det.seed(1);
+  const start = performance.now();
+  while (frame < recording.frames && performance.now() - start - checkMs < budgetMs) {
+    det.setTime(det.EPOCH + frame * interval);
+    while (next < recording.inputs.length && recording.inputs[next].frame <= frame) {
+      apply(recording.inputs[next++]);
+    }
+    bench.passes = 0;
+    bench.target = recording.passes[frame] ?? 1;
+    const before = drawMs;
+    const t = performance.now();
+    runtime._step();
+    scriptMs += performance.now() - t - (drawMs - before);
+    if (bench.passes !== bench.target) drifted++;
+    frame++;
+    if (frame % det.CHECK_INTERVAL === 0) {
+      const c = performance.now();
+      hashes.push(forkphorusState(stage));
+      checkMs += performance.now() - c;
+    }
+    await det.yieldToEventLoop();
+  }
+  const wallMs = performance.now() - start - checkMs;
+  hashes.push(forkphorusState(stage));
+  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes });
 };
 </script>

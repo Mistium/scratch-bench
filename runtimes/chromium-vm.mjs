@@ -31,6 +31,11 @@ if (!KINDS.includes(kind) || !file) {
   process.exit(2);
 }
 
+// With a recording, the project is replayed against it (index.html `replay`) instead of run.
+const recording = process.env.BENCH_RECORDING;
+const replayId = process.env.BENCH_REPLAY_ID ?? "project";
+const budgetMs = Number(process.env.BENCH_REPLAY_BUDGET_MS ?? 60_000);
+
 const bundleDir = process.env.BENCH_BUNDLE_DIR ??
   path.join(root, ".cache/runtimes/web", kind);
 let scripts;
@@ -71,7 +76,9 @@ const server = http.createServer((req, res) => {
   if (url === "/" || url === "/index.html") {
     p = path.join(root, "runtimes/chromium/index.html");
   } else if (url === "/audio.js") p = audioPath;
+  else if (url === "/replay.js") p = path.join(root, "runtimes/replay.js");
   else if (url === "/project.sb3") p = path.resolve(file);
+  else if (url === "/recording.json" && recording) p = path.resolve(recording);
   else if (url.startsWith("/node_modules/")) p = path.join(root, url);
   else if (url.startsWith("/web/")) p = path.join(bundleDir, url.slice(5));
   else if (/^\/(chunks|assets)\//.test(url)) {
@@ -131,6 +138,24 @@ const server = http.createServer((req, res) => {
     });
   });
   const compiler = process.env.BENCH_COMPILER !== "0";
+  if (recording) {
+    // The replay checks its budget between frames, so only a frame that never ends gets this far.
+    const stuck = setTimeout(() => {
+      console.log(`[PROJECT] ${replayId} | error | a frame ran for over a minute`);
+      console.log("[PROJECT] DONE");
+      process.exit(1);
+    }, budgetMs + 60_000);
+    const line = await page.evaluate(
+      ([k, s, c, id, b]) => window.replay(k, s, c, id, b),
+      [kind, scripts, compiler, replayId, budgetMs],
+    ).catch((e) => `${replayId} | error | ${String(e.message).split("\n")[0]}`);
+    clearTimeout(stuck);
+    console.log(`[PROJECT] ${line}`);
+    console.log("[PROJECT] DONE");
+    await browser.close();
+    server.close();
+    process.exit(0);
+  }
   await page.evaluate(([k, s, c]) => window.start(k, s, c), [
     kind,
     scripts,

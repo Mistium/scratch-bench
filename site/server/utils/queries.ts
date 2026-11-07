@@ -1,6 +1,7 @@
 import {
   type Medians,
   SCORE_VERSION,
+  projectSpeed,
   scoreRuntime,
   type WeightMode,
 } from "../../shared/scoring.ts";
@@ -259,7 +260,16 @@ export const buildScores = (
 ): ScoreHistory => {
   const host = resolveHost(ds, q.host);
   const weights = q.weights ?? "default";
-  const perf = forHost(ds, host, q.separate).filter(hasPerformance);
+  const entries = forHost(ds, host, q.separate);
+  const perf = entries.filter(hasPerformance);
+  // Each run's project speeds by runtime, scored with that run's benchmarks.
+  const projectSpeeds = new Map<string, Medians>();
+  for (const e of entries.filter(hasProjects)) {
+    projectSpeeds.set(
+      `${e.runId}|${e.runtime.id}`,
+      Object.fromEntries(Object.entries(e.projects!).map(([id, p]) => [id, projectSpeed(p)])),
+    );
+  }
   const timestamps = [...new Set(perf.map((e) => e.timestamp))]
     .filter((t) => (!q.from || t >= q.from) && (!q.to || t <= q.to))
     .sort();
@@ -275,9 +285,15 @@ export const buildScores = (
       total: blank(),
       coverage: blank(),
       categories: Object.fromEntries(CATEGORY_IDS.map((c) => [c, blank()])),
+      projects: blank(),
     });
     suiteHashes[i] ??= e.suiteHash || null;
-    const score = scoreRuntime(mediansOf(e), weights);
+    const score = scoreRuntime(
+      mediansOf(e),
+      weights,
+      projectSpeeds.get(`${e.runId}|${e.runtime.id}`),
+    );
+    s.projects[i] = sig(score.projects?.score);
     s.total[i] = sig(score.total);
     s.coverage[i] = sig(score.coverage, 3);
     for (const c of CATEGORY_IDS) {
