@@ -15,37 +15,16 @@ export interface ProjectEntry {
   author: string;
   /** sha256 of the project.json the recording was made with. */
   sha256: string;
-  /** In the short set the nightly run replays. */
-  daily?: boolean;
 }
 
-/**
- * How much of each recording to replay. By default, the first 10 recorded seconds of the daily
- * set, for 30 seconds each at most, so the nightly run stays short; `--projects all` (or a list of
- * ids) replays whole recordings for up to 5 minutes each.
- */
-export interface Selection {
-  projects: ProjectEntry[];
-  maxSeconds?: number;
-  budgetMs: number;
-}
+/** Real time each replay may take before it stops and reports how far it got. */
+export const BUDGET_MS = 30_000;
 
 export const manifest = (): ProjectEntry[] =>
   JSON.parse(fs.readFileSync(path.join(PROJECTS_DIR, "manifest.json"), "utf8"));
 
 export const projectFile = (id: string) => path.join(PROJECT_FILES, `${id}.sb3`);
 export const recordingFile = (id: string) => path.join(PROJECTS_DIR, "recordings", `${id}.json`);
-
-export const selectProjects = (spec?: string): Selection => {
-  const all = manifest();
-  if (!spec) return { projects: all.filter((p) => p.daily), maxSeconds: 10, budgetMs: 30_000 };
-  if (spec === "all") return { projects: all, budgetMs: 300_000 };
-  const ids = spec.split(",").map((x) => x.trim()).filter(Boolean);
-  for (const id of ids) {
-    if (!all.some((p) => p.id === id)) throw new Error(`project ${id} is not in projects/manifest.json`);
-  }
-  return { projects: all.filter((p) => ids.includes(p.id)), budgetMs: 300_000 };
-};
 
 export interface BakedProject {
   id: string;
@@ -56,11 +35,11 @@ export interface BakedProject {
 }
 
 /** Each fetched project with its recording baked in (see bake.ts), in .cache/build/projects. */
-export const bakeProjects = (s: Selection, log: (line: string) => void = () => {}): BakedProject[] => {
+export const bakeProjects = (log: (line: string) => void = () => {}): BakedProject[] => {
   const dir = path.join(BUILD_DIR, "projects");
   fs.mkdirSync(dir, { recursive: true });
   const out: BakedProject[] = [];
-  for (const p of s.projects) {
+  for (const p of manifest()) {
     if (!fs.existsSync(projectFile(p.id))) continue;
     try {
       const files = unzip(fs.readFileSync(projectFile(p.id)));
@@ -68,7 +47,7 @@ export const bakeProjects = (s: Selection, log: (line: string) => void = () => {
       const baked = bake(
         JSON.parse(new TextDecoder().decode(files.get("project.json"))),
         recording,
-        { id: p.id, maxSeconds: s.maxSeconds, budgetMs: s.budgetMs },
+        { id: p.id, budgetMs: BUDGET_MS },
       );
       files.set("project.json", new TextEncoder().encode(JSON.stringify(baked.project)));
       for (const [name, data] of baked.assets) files.set(name, data);

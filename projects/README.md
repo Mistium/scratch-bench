@@ -1,31 +1,25 @@
 # Projects
 
-Real Scratch projects, each with a recording of a person using it, replayed as a benchmark (the
-`projects` suite).
+Six real Scratch projects, each with the first 10 seconds of a recording of a person using it,
+replayed as a benchmark (the `projects` suite): Linux on a RISC-V emulator, Doom, a Game Boy
+emulator, a fluid simulation, a 3D maze and a tower defence game.
 
-- `manifest.json` lists the projects: id, title, author, the sha256 of the `project.json` the
-  recording belongs to, and `daily` for the short set the nightly run uses.
+- `manifest.json` lists the projects: id, title, author, and the sha256 of the `project.json` the
+  recording belongs to.
 - `recordings/<id>.json` is the recorded play: the frame rate, the number of frames, how many
   scheduler ticks ran in each frame (`passes`), and the inputs with the frame they happened on
   (green flag, mouse, keys, wheel, `ask` answers, slider changes).
 
-The projects themselves aren't committed. The suite downloads the ones it needs into
-`.cache/projects` when it builds (not with `--offline`); to download them all ahead of time:
+The projects themselves aren't committed. The suite downloads them into `.cache/projects` when it
+builds (not with `--offline`), or `bun run fetch-projects` does. A project whose `project.json` no
+longer matches the manifest has been edited since it was recorded, so it is skipped.
 
 ```sh
-bun run fetch-projects            # all of them
-bun run fetch-projects 1201938491 # just some
+bun run bench --suite projects
 ```
 
-A project whose `project.json` no longer matches the manifest has been edited since it was recorded,
-so it is skipped. The suite runs each runtime in its default mode only, not every variant, to keep the nightly
-run short.
-
-```sh
-bun run bench --suite projects                    # the daily set: 10 recorded seconds of each, 30 s at most
-bun run bench --suite projects --projects all     # every project, whole recordings, 5 minutes at most
-bun run bench --suite projects --projects 1201938491,324569477
-```
+Each replay may take 30 seconds before it stops and reports how far it got. The suite runs each
+runtime in its default mode only, not every variant, to keep the nightly run short.
 
 ## How a replay works
 
@@ -74,6 +68,6 @@ Some things are approximations, the same on every runtime:
   survives. Inside a custom block run without screen refresh, it can spin for up to half a second
   first.
 - The pointer moving counts as a visual change, so it ends a frame where a real mouse move wouldn't.
-- Turbo mode changes in a recording are ignored, and a recording stops at a second green flag.
+- Turbo mode changes in a recording are ignored.
 
 The projects are by their authors on scratch.mit.edu, shared under CC BY-SA 2.0.

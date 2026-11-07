@@ -11,7 +11,6 @@ import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
 import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
 import { summarize } from "./stats.ts";
-import { selectProjects } from "./projects.ts";
 import { selectSuites, type Suite } from "./suites.ts";
 import {
   infoOf,
@@ -26,8 +25,6 @@ const USAGE = `usage: bun run bench [setup] [options]
   setup                   only build the suites and set up the runtimes
   --runtime a,b           runtimes to test (default: all)
   --suite a,b             suites to run: performance, parity, projects (default: all)
-  --projects all|id,id    projects to replay in the projects suite, whole recordings (default: the daily
-                          set, 10 recorded seconds of each)
   --runs N                runs per runtime for the performance suite (default 10)
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs per runtime for the projects suite (default 1)
@@ -48,7 +45,6 @@ const { values: opts, positionals } = parseArgs({
     runs: { type: "string" },
     "parity-runs": { type: "string" },
     "project-runs": { type: "string" },
-    projects: { type: "string" },
     timeout: { type: "string" },
     display: { type: "string", default: "x11" },
     offline: { type: "boolean", default: false },
@@ -87,8 +83,6 @@ const main = async (): Promise<number> => {
 
   const runtimes = selectRuntimes(split(opts.runtime));
   const suites = selectSuites(split(opts.suite));
-  // A mistyped --projects id is a usage error, not a failed build.
-  if (suites.some((s) => s.id === "projects")) selectProjects(opts.projects);
   const timeoutMs = count(opts.timeout, 300) * 1000;
 
   log("Building suites from source");
@@ -98,8 +92,7 @@ const main = async (): Promise<number> => {
     try {
       const b = await buildSuite(suite, {
         offline: opts.offline,
-        projects: opts.projects,
-        log,
+          log,
       });
       built.set(suite.id, b);
       log(

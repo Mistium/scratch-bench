@@ -29,8 +29,6 @@ export interface Recording {
 
 export interface BakeOptions {
   id: string;
-  /** Replay at most this many seconds of the recording. */
-  maxSeconds?: number;
   /** Real time the replay may take before it stops and reports how far it got. */
   budgetMs: number;
 }
@@ -465,18 +463,10 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const answers = list(stage, "replay answers");
   const output = list(stage, "output");
 
-  // ---- the recorded events, by tick ----
-  const flags = recording.inputs.filter((i) => i.type === "greenFlag").map((i) => i.frame);
-  const firstFrame = flags[0] ?? 0;
-  // A second green flag restarts everything, which a replay can't; it stops there.
-  const endFrame = Math.min(
-    recording.frames,
-    flags[1] ?? Infinity,
-    firstFrame + Math.round((o.maxSeconds ?? Infinity) * (recording.framerate || 30)),
-  );
+  // ---- the recorded events, by tick (the recordings start with the green flag, at frame 0) ----
   const tickOf: number[] = [];
-  for (let f = firstFrame, t = 0; f <= endFrame; t += recording.passes[f++] ?? 0) tickOf[f] = t;
-  const ticks = tickOf[endFrame];
+  for (let f = 0, t = 0; f <= recording.frames; t += recording.passes[f++] ?? 0) tickOf[f] = t;
+  const ticks = tickOf[recording.frames];
 
   const inputs = [...recording.inputs].sort((x, y) => x.frame - y.frame);
   const events: [number, string, unknown, unknown][] = [];
@@ -484,9 +474,8 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const held = new Set<string>();
   let mouse = { x: 0, y: 0, down: false };
   for (const input of inputs) {
-    if (input.frame < firstFrame || input.frame >= endFrame) continue;
     const t = tickOf[input.frame];
-    if (t >= ticks) continue;
+    if (t === undefined || t >= ticks) continue;
     if (input.type === "mouse") {
       // Scratch reports the pointer rounded and kept on the stage.
       const x = Math.round(Math.max(-width / 2, Math.min(width / 2, input.x)));
@@ -710,7 +699,7 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const dayMs = 86_400_000;
   // The replayed frames at 30 fps: how long a runtime that keeps up takes for a project that
   // redraws every frame.
-  const recordedMs = Math.round(((endFrame - firstFrame) / 30) * 1000);
+  const recordedMs = Math.round((recording.frames / 30) * 1000);
   const build = new Builder(pointer.blocks, broadcast);
   const on = (k: string, body: Blk[]) => ifThen(eq(kind, k), body);
   const send = (...name: In[]) => b("event_broadcast", { BROADCAST_INPUT: name.length > 1 ? join(...name) : name[0] });

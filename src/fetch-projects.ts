@@ -1,4 +1,4 @@
-// usage: bun run fetch-projects [id ...]
+// usage: bun run fetch-projects
 // Downloads the projects in projects/manifest.json from scratch.mit.edu into .cache/projects as sb3
 // files. A project whose project.json no longer matches the manifest's sha256 was edited after it
 // was recorded, so it is skipped rather than replayed against the wrong version.
@@ -81,11 +81,7 @@ export const fetchProjects = async (
 };
 
 if (import.meta.main) {
-  const only = new Set(process.argv.slice(2));
-  const wanted = manifest().filter((p) => !only.size || only.has(p.id));
-  for (const id of only) {
-    if (!wanted.some((p) => p.id === id)) console.log(`${id}: not in projects/manifest.json`);
-  }
+  const wanted = manifest();
   await fetchProjects(wanted, console.log);
   const have = wanted.filter((p) => fs.existsSync(projectFile(p.id))).length;
   console.log(`${have} of ${wanted.length} projects in ${PROJECT_FILES}`);

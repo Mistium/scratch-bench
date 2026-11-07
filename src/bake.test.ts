@@ -124,14 +124,6 @@ test("bake places the recorded events by tick and rewires the project's inputs t
   expect(ops(stage)).toContain("data_setvariableto");
 });
 
-test("bake stops at a second green flag and after maxSeconds", () => {
-  const twoFlags = { ...recording, inputs: [...recording.inputs, { frame: 3, type: "greenFlag" as const }] };
-  expect(bake(project(), twoFlags, { id: "1", budgetMs: 1000 }).ticks).toBe(4);
-  // 2 frames at 30 fps; at 15 fps, 0.133 s is the same 2 frames, still 67 ms at 30 fps.
-  expect(bake(project(), recording, { id: "1", budgetMs: 1000, maxSeconds: 2 / 30 }).ticks).toBe(3);
-  const slow = bake(project(), { ...recording, framerate: 15 }, { id: "1", budgetMs: 1000, maxSeconds: 2 / 15 });
-  expect([slow.ticks, slow.recordedMs]).toEqual([3, 67]);
-});
 
 test("bake parks stop all inside a custom block, since stop this script would return to the caller", () => {
   const p = project();

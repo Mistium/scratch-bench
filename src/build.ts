@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILD_DIR, ROOT } from "./paths.ts";
 import { fetchProjects } from "./fetch-projects.ts";
-import { type BakedProject, bakeProjects, selectProjects } from "./projects.ts";
+import { type BakedProject, bakeProjects, BUDGET_MS, manifest } from "./projects.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
@@ -17,8 +17,6 @@ export interface Built {
 
 export interface BuildOptions {
   offline?: boolean;
-  /** `--projects`: "all" or ids; the daily set when absent. */
-  projects?: string;
   log?: (line: string) => void;
 }
 
@@ -78,24 +76,22 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
   }
   fs.mkdirSync(BUILD_DIR, { recursive: true });
   if (suite.id === "projects") {
-    const selection = selectProjects(o.projects);
-    if (!o.offline) await fetchProjects(selection.projects, (line) => o.log?.(`  ${line}`));
-    const projects = bakeProjects(selection, (line) => o.log?.(line));
+    if (!o.offline) await fetchProjects(manifest(), (line) => o.log?.(`  ${line}`));
+    const projects = bakeProjects((line) => o.log?.(line));
     if (!projects.length) {
       throw new Error("none of the projects are downloaded (bun run fetch-projects)");
     }
     const h = new Bun.CryptoHasher("sha256")
       .update(hashSource(dir))
       .update(fs.readFileSync(path.join(ROOT, "src/bake.ts")))
-      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")))
-      .update(JSON.stringify([selection.maxSeconds, selection.budgetMs]));
+      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")));
     for (const p of projects) h.update(p.id);
     return {
       sb3: path.join(BUILD_DIR, "projects"),
       hash: h.digest("hex").slice(0, 16),
       projects,
       // The replay stops itself at the budget; this leaves time to load and for a stuck frame.
-      timeoutMs: selection.budgetMs + 120_000,
+      timeoutMs: BUDGET_MS + 120_000,
     };
   }
   const sb3 = path.join(BUILD_DIR, `${suite.id}.sb3`);
