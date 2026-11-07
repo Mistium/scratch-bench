@@ -985,8 +985,21 @@ summary {
 
 .resource-use__charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-5);
+}
+
+.resource-use__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.resource-use__head .resource-use__title {
+  margin-bottom: 0;
 }
 
 .resource-use__title {
