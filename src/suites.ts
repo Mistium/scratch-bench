@@ -1,6 +1,5 @@
 import path from "node:path";
 import { ROOT } from "./paths.ts";
-import type { Command } from "./runtimes/types.ts";
 
 export interface PerfRecord {
   total_ms: number;
@@ -22,17 +21,22 @@ export interface ParityData {
   }[];
 }
 
-/** One recorded project replayed (see runtimes/chromium/index.html `replay`). */
+/** One recorded project replayed (see src/bake.ts). */
 export type ProjectRun =
   | {
-    /** Real time spent stepping the recorded frames. */
+    /** Real time the replay took. */
     ms: number;
-    frames: number;
-    recorded_frames: number;
-    worst_frame_ms: number;
-    /** Frames that ran fewer ticks than recorded: the replay drifted from the recording. */
-    short_frames: number;
-    load_ms: number;
+    /** Real time the recording took; a runtime that keeps up takes about this long. */
+    recorded_ms: number;
+    /** Scheduler ticks replayed, of the recording's; fewer when it ran out of time. */
+    ticks: number;
+    recorded_ticks: number;
+    /** The longest gap between two ticks: the worst frame. */
+    worst_ms: number;
+    /** Gaps between ticks longer than 50 ms: frames that couldn't keep up. */
+    long_frames: number;
+    /** From starting the runtime to the replay starting. */
+    load_ms?: number;
   }
   | { error: string };
 
@@ -43,8 +47,8 @@ export interface Suite<T = unknown> {
   runs: number;
   isDone(line: string): boolean;
   parse(lines: string[]): T;
-  /** Whether a runtime's launcher can run this suite; all can when absent. */
-  supports?(command: Command): boolean;
+  /** Run with the other launcher when a runtime doesn't have this one. */
+  anyLauncher?: boolean;
 }
 
 const PERF_LINE =
@@ -112,54 +116,44 @@ export const parity: Suite<ParityData> = {
   },
 };
 
-const PROJECT_LINE = /^(\d+) \| ([\d.]+) \| (\d+)\/(\d+) \| ([\d.]+) \| (\d+) \| ([\d.]+)$/;
+const PROJECT_LINE = /^(\d+) \| ([\d.]+) \| (\d+)\/(\d+) \| ([\d.]+) \| (\d+) \| (\d+)$/;
 
-/** Real projects replaying recorded play. Opt-in: needs `bun run fetch-projects` first. */
+/** Real projects replaying recorded play, baked into each project (src/bake.ts). One sb3 per run. */
 export const projects: Suite<Record<string, ProjectRun>> = {
   id: "projects",
   source: "projects",
   launcher: "gui",
+  anyLauncher: true,
   runs: 1,
   isDone: (line) => line === "DONE",
-  // Only the browser runner can replay recordings so far. MistWarp and 02engine check the tick
-  // timer after ticks rather than before, so they can't be held to the recorded tick counts.
-  supports: (command) => {
-    const i = command.cmd.findIndex((arg) => arg.endsWith("chromium-vm.mjs"));
-    return i >= 0 && !["mistwarp", "02engine"].includes(command.cmd[i + 1]);
-  },
   parse(lines) {
     const out: Record<string, ProjectRun> = {};
     for (const line of lines) {
       const m = PROJECT_LINE.exec(line);
-      if (m) {
-        out[m[1]] = {
-          ms: Number(m[2]),
-          frames: Number(m[3]),
-          recorded_frames: Number(m[4]),
-          worst_frame_ms: Number(m[5]),
-          short_frames: Number(m[6]),
-          load_ms: Number(m[7]),
-        };
-      } else {
-        const e = /^(\d+) \| error \| (.*)$/.exec(line);
-        if (e) out[e[1]] = { error: e[2] };
-      }
+      if (!m) continue;
+      out[m[1]] = {
+        ms: Number(m[2]),
+        ticks: Number(m[3]),
+        recorded_ticks: Number(m[4]),
+        worst_ms: Number(m[5]),
+        long_frames: Number(m[6]),
+        recorded_ms: Number(m[7]),
+      };
     }
     return out;
   },
 };
 
 /** The suites run when none are named. */
-export const SUITES = [performance, parity] as Suite<any>[];
+export const SUITES = [performance, parity, projects] as Suite<any>[];
 
 export const selectSuites = (ids: string[] | undefined): Suite<any>[] => {
   if (!ids) return SUITES;
-  const all = [...SUITES, projects] as Suite<any>[];
   return ids.map((id) => {
-    const s = all.find((x) => x.id === id);
+    const s = SUITES.find((x) => x.id === id);
     if (!s) {
       throw new Error(
-        `unknown suite "${id}" (known: ${all.map((x) => x.id).join(", ")})`,
+        `unknown suite "${id}" (known: ${SUITES.map((x) => x.id).join(", ")})`,
       );
     }
     return s;

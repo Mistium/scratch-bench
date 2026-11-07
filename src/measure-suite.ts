@@ -62,8 +62,7 @@ export const measureSuite = async (
     } finally {
       await display?.stop();
     }
-    // A projects run that died part-way still reports the projects it finished.
-    const data = run.ok || suite.id === "projects" ? suite.parse(run.lines) : undefined;
+    const data = run.ok ? suite.parse(run.lines) : undefined;
     if (data !== undefined) datas.push(data);
     runs.push({
       ok: run.ok,
@@ -82,15 +81,7 @@ export const measureSuite = async (
     );
   }
 
-  const ok = runs.filter((r) => r.ok);
-  const stats: SuiteResult["stats"] = {};
-  for (
-    const metric of ["startup_ms", "run_ms", "wall_ms", "peak_rss_mb"] as const
-  ) {
-    stats[metric] = summarize(
-      ok.map((r) => r[metric]!).filter((x) => x !== null),
-    );
-  }
+  const stats = statsOf(runs);
 
   let results: unknown = null;
   if (suite.id === "performance") {
@@ -113,27 +104,33 @@ export const measureSuite = async (
       ]),
     );
   } else if (suite.id === "projects") {
-    // Per project: the median time over runs; frame counts and errors from the last run.
-    const perRun = datas as Record<string, ProjectRun>[];
-    const ids = [...new Set(perRun.flatMap((d) => Object.keys(d)))];
-    results = Object.fromEntries(ids.map((id) => {
-      const ran = perRun.map((d) => d[id]).filter((r) => r && !("error" in r)) as Extract<
-        ProjectRun,
-        { ms: number }
-      >[];
-      const last = perRun.map((d) => d[id]).filter(Boolean).at(-1)!;
-      if (!ran.length) return [id, last];
-      return [id, {
+    // One project per call: its times summarized over the runs, its tick counts from the last.
+    const ran = (datas as Record<string, ProjectRun>[])
+      .flatMap((d) => Object.values(d)) as Extract<ProjectRun, { ms: number }>[];
+    const last = ran.at(-1);
+    results = last
+      ? {
+        ...last,
         ms: summarize(ran.map((r) => r.ms)),
-        worst_frame_ms: summarize(ran.map((r) => r.worst_frame_ms)),
-        load_ms: summarize(ran.map((r) => r.load_ms)),
-        frames: ran.at(-1)!.frames,
-        recorded_frames: ran.at(-1)!.recorded_frames,
-        short_frames: ran.at(-1)!.short_frames,
-      }];
-    }));
+        worst_ms: summarize(ran.map((r) => r.worst_ms)),
+        load_ms: stats.startup_ms,
+      }
+      : { error: runs.at(-1)?.error ?? "no result" };
   } else if (datas.length) {
     results = datas[datas.length - 1];
   }
   return { runs, stats, results, display: displayName };
+};
+
+export const statsOf = (runs: SuiteResult["runs"]): SuiteResult["stats"] => {
+  const ok = runs.filter((r) => r.ok);
+  const stats: SuiteResult["stats"] = {};
+  for (
+    const metric of ["startup_ms", "run_ms", "wall_ms", "peak_rss_mb"] as const
+  ) {
+    stats[metric] = summarize(
+      ok.map((r) => r[metric]!).filter((x) => x !== null),
+    );
+  }
+  return stats;
 };

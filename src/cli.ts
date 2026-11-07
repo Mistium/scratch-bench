@@ -5,7 +5,7 @@ import "./cleanup.ts";
 import { buildSuite, type Built } from "./build.ts";
 import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
-import { measureSuite } from "./measure-suite.ts";
+import { measureSuite, statsOf } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
@@ -24,8 +24,9 @@ const USAGE = `usage: bun run bench [setup] [options]
 
   setup                   only build the suites and set up the runtimes
   --runtime a,b           runtimes to test (default: all)
-  --suite a,b             suites to run: performance, parity, projects (default: performance, parity)
-                          projects replays recorded play of real projects; run \`bun run fetch-projects\` first
+  --suite a,b             suites to run: performance, parity, projects (default: all)
+  --projects all|id,id    projects to replay in the projects suite, whole recordings (default: the daily
+                          set, 10 seconds of each)
   --runs N                runs per runtime for the performance suite (default 10)
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs per runtime for the projects suite (default 1)
@@ -45,6 +46,7 @@ const { values: opts, positionals } = parseArgs({
     runs: { type: "string" },
     "parity-runs": { type: "string" },
     "project-runs": { type: "string" },
+    projects: { type: "string" },
     timeout: { type: "string", default: "300" },
     display: { type: "string", default: "x11" },
     offline: { type: "boolean", default: false },
@@ -88,7 +90,11 @@ const main = async (): Promise<number> => {
   log("Building suites from source");
   const built = new Map<string, Built>();
   for (const suite of suites) {
-    const b = await buildSuite(suite);
+    const b = await buildSuite(suite, {
+      offline: opts.offline,
+      projects: opts.projects,
+      log,
+    });
     built.set(suite.id, b);
     log(
       `  ${suite.id}: ${
@@ -219,15 +225,14 @@ const runSuite = async (
     kind = "gui";
     launcher = rt.gui;
   }
+  if (!launcher && suite.anyLauncher && rt.headless) {
+    kind = "headless";
+    launcher = rt.headless;
+  }
   if (!launcher) {
     const skipped = suite.launcher === "gui"
       ? "no rendered (gui) launcher for this runtime yet"
       : `no ${suite.launcher} launcher`;
-    log(`${suite.id} / ${label}: skipped, ${skipped}`);
-    return { ...base, skipped };
-  }
-  if (suite.supports && !suite.supports(launcher.command(built.sb3, variant))) {
-    const skipped = "this runtime's launcher can't run this suite yet";
     log(`${suite.id} / ${label}: skipped, ${skipped}`);
     return { ...base, skipped };
   }
@@ -241,13 +246,32 @@ const runSuite = async (
   log(
     `${suite.id} / ${label} (${kind}): ${total} run${total > 1 ? "s" : ""}`,
   );
-  const measured = await measureSuite(suite, launcher, built.sb3, {
+  const options = {
     variant,
     runs: total,
     timeoutMs: Math.max(timeoutMs, built.timeoutMs ?? 0),
     displayKind: opts.display as DisplayKind,
     log,
-  });
+  };
+  if (built.projects) {
+    // Each project is its own sb3 and its own run of the runtime.
+    const results: Record<string, unknown> = {};
+    for (const p of built.projects) {
+      log(`  ${p.id} ${p.title}`);
+      const measured = await measureSuite(suite, launcher, p.sb3, options);
+      base.runs.push(...measured.runs);
+      base.runtime.display = measured.display;
+      results[p.id] = {
+        recorded_ms: p.recordedMs,
+        recorded_ticks: p.ticks,
+        ...(measured.results as object),
+      };
+    }
+    base.stats = statsOf(base.runs);
+    base.results = results;
+    return base;
+  }
+  const measured = await measureSuite(suite, launcher, built.sb3, options);
   base.runs = measured.runs;
   base.stats = measured.stats;
   base.results = measured.results;

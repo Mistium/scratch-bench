@@ -1,15 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BUILD_DIR, ROOT } from "./paths.ts";
-import { PROJECT_BUDGET_MS, playlist } from "./projects.ts";
+import { fetchProjects } from "./fetch-projects.ts";
+import { type BakedProject, bakeProjects, selectProjects } from "./projects.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
-  /** The sb3, or for the projects suite the playlist of fetched projects. */
+  /** The sb3, or for the projects suite the folder of baked projects. */
   sb3: string;
   hash: string;
-  /** A run limit that overrides a shorter --timeout. */
+  /** The projects suite's projects, each run on its own. */
+  projects?: BakedProject[];
+  /** A run limit (per project) that overrides a shorter --timeout. */
   timeoutMs?: number;
+}
+
+export interface BuildOptions {
+  offline?: boolean;
+  /** `--projects`: "all" or ids; the daily set when absent. */
+  projects?: string;
+  log?: (line: string) => void;
 }
 
 const fractch = async (...args: string[]): Promise<string> => {
@@ -57,7 +67,7 @@ const hashSource = (dir: string): string => {
   return h.digest("hex").slice(0, 16);
 };
 
-export const buildSuite = async (suite: Suite): Promise<Built> => {
+export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Built> => {
   const dir = suiteSourceDir(suite);
   if (!fs.existsSync(dir)) {
     throw new Error(
@@ -68,16 +78,23 @@ export const buildSuite = async (suite: Suite): Promise<Built> => {
   }
   fs.mkdirSync(BUILD_DIR, { recursive: true });
   if (suite.id === "projects") {
-    const list = playlist();
-    const file = path.join(BUILD_DIR, "projects.json");
-    fs.writeFileSync(file, JSON.stringify(list));
-    const h = new Bun.CryptoHasher("sha256").update(hashSource(dir));
-    for (const p of list) h.update(p.id);
+    const selection = selectProjects(o.projects);
+    if (!o.offline) await fetchProjects(selection.projects, (line) => o.log?.(`  ${line}`));
+    const projects = bakeProjects(selection);
+    if (!projects.length) {
+      throw new Error("none of the projects are downloaded (bun run fetch-projects)");
+    }
+    const h = new Bun.CryptoHasher("sha256")
+      .update(hashSource(dir))
+      .update(fs.readFileSync(path.join(ROOT, "src/bake.ts")))
+      .update(JSON.stringify([selection.maxFrames, selection.budgetMs]));
+    for (const p of projects) h.update(p.id);
     return {
-      sb3: file,
+      sb3: path.join(BUILD_DIR, "projects"),
       hash: h.digest("hex").slice(0, 16),
-      // Each project's budget, plus the minute the runner waits before giving up on a stuck one.
-      timeoutMs: list.length * (PROJECT_BUDGET_MS + 60_000) + 120_000,
+      projects,
+      // The replay stops itself at the budget; this leaves time to load and for a stuck frame.
+      timeoutMs: selection.budgetMs + 120_000,
     };
   }
   const sb3 = path.join(BUILD_DIR, `${suite.id}.sb3`);
