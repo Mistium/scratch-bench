@@ -68,6 +68,10 @@ const hasPerformance = (e: Entry) =>
 const hasParity = (e: Entry) =>
   e.suite === "parity" && e.runs.ok > 0 && e.parity !== null;
 
+const hasProjects = (e: Entry) =>
+  e.suite === "projects" && e.projects !== null &&
+  Object.keys(e.projects).length > 0;
+
 export const sig = (x: number | null | undefined, digits = 5): number | null =>
   typeof x === "number" && Number.isFinite(x)
     ? Number(x.toPrecision(digits))
@@ -80,7 +84,9 @@ const rsdOf = (
 export const buildMeta = (ds: Dataset, separate = false): Meta => {
   const latestByRuntime = new Map<string, Entry>();
   for (const e of viewOf(ds, separate)) {
-    if (e.suite === "performance" || e.suite === "parity") latestByRuntime.set(e.runtime.id, e);
+    if (e.suite === "performance" || e.suite === "parity") {
+      latestByRuntime.set(e.runtime.id, e);
+    }
   }
   const runtimes: RuntimeInfo[] = [...latestByRuntime.values()].map((e) => ({
     id: e.runtime.id,
@@ -115,6 +121,8 @@ export const buildLatest = (
   const par = entries.filter(hasParity);
   const latestPerf = perf.at(-1)?.timestamp ?? null;
   const latestParity = par.at(-1)?.timestamp ?? null;
+  const proj = entries.filter(hasProjects);
+  const latestProjects = proj.at(-1)?.timestamp ?? null;
 
   const ids = [...new Set(perf.map((e) => e.runtime.id))];
   const runtimes: LatestRuntime[] = ids.map((id) => {
@@ -160,7 +168,18 @@ export const buildLatest = (
       },
     };
   });
-  return { host, timestamp: latestPerf, runtimes, parity };
+  const projects = [...new Set(proj.map((e) => e.runtime.id))].map((id) => {
+    const q = [...proj].reverse().find((e) => e.runtime.id === id)!;
+    return {
+      id,
+      name: q.runtime.name,
+      launcher: q.runtime.launcher,
+      timestamp: q.timestamp,
+      stale: q.timestamp !== latestProjects,
+      projects: q.projects!,
+    };
+  });
+  return { host, timestamp: latestPerf, runtimes, parity, projects };
 };
 
 export interface HistoryQuery {

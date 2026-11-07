@@ -1740,3 +1740,40 @@ summary {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+.projects__scroll {
+  overflow-x: auto;
+}
+
+.projects__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.projects__table th,
+.projects__table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.projects__table thead th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.projects__table .projects__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.projects__table td[data-state="error"] {
+  color: var(--color-bad);
+}
+
+.projects__table td[data-state="cut"],
+.projects__table td[data-state="missing"] {
+  color: var(--color-text-muted);
+}

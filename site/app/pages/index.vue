@@ -27,6 +27,7 @@ useHead({ title: "ScratchBench" });
             <ScoreTrend />
             <ParityTrend />
             <ParitySummary />
+            <ProjectsPanel />
             <MainBenchmarks />
             <ResourceUse />
             <ScoringInfo />

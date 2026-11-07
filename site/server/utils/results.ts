@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   HostInfo,
   ParitySummary,
+  ProjectResult,
   Summary,
   VariantInfo,
 } from "../../shared/types.ts";
@@ -33,6 +34,7 @@ export interface Entry {
   peak_rss_mb: Summary | null;
   benchmarks: Record<string, Summary | null>;
   parity: ParitySummary | null;
+  projects: Record<string, ProjectResult> | null;
   backfilled: boolean;
 }
 
@@ -126,9 +128,26 @@ export const parseResult = (
 
   const benchmarks: Record<string, Summary | null> = {};
   let parity: ParitySummary | null = null;
+  let projects: Record<string, ProjectResult> | null = null;
   if (suite.id === "performance" && results && ok > 0) {
     for (const [id, value] of Object.entries(results)) {
       benchmarks[id] = isObject(value) ? toSummary(value.ops_per_ms) : null;
+    }
+  } else if (suite.id === "projects" && results) {
+    const num = (x: unknown) => typeof x === "number" && Number.isFinite(x) ? x : null;
+    projects = {};
+    for (const [id, value] of Object.entries(results)) {
+      if (!isObject(value)) continue;
+      projects[id] = {
+        error: typeof value.error === "string" ? value.error : null,
+        ms: toSummary(value.ms),
+        recorded_ms: num(value.recorded_ms),
+        ticks: num(value.ticks),
+        recorded_ticks: num(value.recorded_ticks),
+        worst_ms: toSummary(value.worst_ms),
+        long_frames: num(value.long_frames),
+        load_ms: toSummary(value.load_ms),
+      };
     }
   } else if (suite.id === "parity" && results && ok > 0) {
     parity = {
@@ -177,6 +196,7 @@ export const parseResult = (
     peak_rss_mb: toSummary(stats.peak_rss_mb),
     benchmarks,
     parity,
+    projects,
     backfilled: isObject(json.backfill),
   };
 };

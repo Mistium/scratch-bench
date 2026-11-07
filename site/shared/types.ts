@@ -80,6 +80,27 @@ export interface LatestRuntime {
   parity: (ParitySummary & { timestamp: string; stale: boolean }) | null;
 }
 
+export interface ProjectResult {
+  /** Set when the replay failed; the rest is then empty. */
+  error: string | null;
+  ms: Summary | null;
+  recorded_ms: number | null;
+  ticks: number | null;
+  recorded_ticks: number | null;
+  worst_ms: Summary | null;
+  long_frames: number | null;
+  load_ms: Summary | null;
+}
+
+export interface LatestProjects {
+  id: string;
+  name: string;
+  launcher: string | null;
+  timestamp: string;
+  stale: boolean;
+  projects: Record<string, ProjectResult>;
+}
+
 export interface LatestParity {
   id: string;
   name: string;
@@ -91,6 +112,7 @@ export interface Latest {
   timestamp: string | null;
   runtimes: LatestRuntime[];
   parity: LatestParity[];
+  projects: LatestProjects[];
 }
 
 export interface HistoryRuntime {
