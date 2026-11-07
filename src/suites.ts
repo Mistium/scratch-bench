@@ -21,13 +21,36 @@ export interface ParityData {
   }[];
 }
 
+/** One recorded project replayed (see src/bake.ts). */
+export type ProjectRun =
+  | {
+    /** Real time the replay took. */
+    ms: number;
+    /** Real time the recording took; a runtime that keeps up takes about this long. */
+    recorded_ms: number;
+    /** Scheduler ticks replayed, of the recording's; fewer when it ran out of time. */
+    ticks: number;
+    recorded_ticks: number;
+    /** The longest gap between two ticks: the worst frame. */
+    worst_ms: number;
+    /** Gaps between ticks longer than 50 ms: frames that couldn't keep up. */
+    long_frames: number;
+    /** From starting the runtime to the replay starting. */
+    load_ms?: number;
+  }
+  | { error: string };
+
 export interface Suite<T = unknown> {
-  id: "performance" | "parity";
+  id: "performance" | "parity" | "projects";
   source: string;
   launcher: "headless" | "gui";
   runs: number;
   isDone(line: string): boolean;
   parse(lines: string[]): T;
+  /** Run with the other launcher when a runtime doesn't have this one. */
+  anyLauncher?: boolean;
+  /** Run each runtime in its default mode only, not every variant. */
+  defaultVariantOnly?: boolean;
 }
 
 const PERF_LINE =
@@ -95,7 +118,38 @@ export const parity: Suite<ParityData> = {
   },
 };
 
-export const SUITES = [performance, parity] as Suite<any>[];
+const PROJECT_LINE = /^(\d+) \| ([\d.]+) \| (\d+)\/(\d+) \| ([\d.]+) \| (\d+) \| (\d+)$/;
+
+/** Real projects replaying recorded play, baked into each project (src/bake.ts). One sb3 per run. */
+export const projects: Suite<Record<string, ProjectRun>> = {
+  id: "projects",
+  source: "projects",
+  launcher: "gui",
+  anyLauncher: true,
+  // Each project plays in real time, so every variant would add minutes to the nightly run.
+  defaultVariantOnly: true,
+  runs: 1,
+  isDone: (line) => line === "DONE",
+  parse(lines) {
+    const out: Record<string, ProjectRun> = {};
+    for (const line of lines) {
+      const m = PROJECT_LINE.exec(line);
+      if (!m) continue;
+      out[m[1]] = {
+        ms: Number(m[2]),
+        ticks: Number(m[3]),
+        recorded_ticks: Number(m[4]),
+        worst_ms: Number(m[5]),
+        long_frames: Number(m[6]),
+        recorded_ms: Number(m[7]),
+      };
+    }
+    return out;
+  },
+};
+
+/** The suites run when none are named. */
+export const SUITES = [performance, parity, projects] as Suite<any>[];
 
 export const selectSuites = (ids: string[] | undefined): Suite<any>[] => {
   if (!ids) return SUITES;

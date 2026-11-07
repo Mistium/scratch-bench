@@ -1,11 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BUILD_DIR, ROOT } from "./paths.ts";
+import { fetchProjects } from "./fetch-projects.ts";
+import { type BakedProject, bakeProjects, BUDGET_MS, manifest } from "./projects.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
+  /** The sb3, or for the projects suite the folder of baked projects. */
   sb3: string;
   hash: string;
+  /** The projects suite's projects, each run on its own. */
+  projects?: BakedProject[];
+  /** A run limit (per project) that overrides a shorter --timeout. */
+  timeoutMs?: number;
+}
+
+export interface BuildOptions {
+  offline?: boolean;
+  log?: (line: string) => void;
 }
 
 const fractch = async (...args: string[]): Promise<string> => {
@@ -53,7 +65,7 @@ const hashSource = (dir: string): string => {
   return h.digest("hex").slice(0, 16);
 };
 
-export const buildSuite = async (suite: Suite): Promise<Built> => {
+export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Built> => {
   const dir = suiteSourceDir(suite);
   if (!fs.existsSync(dir)) {
     throw new Error(
@@ -63,6 +75,25 @@ export const buildSuite = async (suite: Suite): Promise<Built> => {
     );
   }
   fs.mkdirSync(BUILD_DIR, { recursive: true });
+  if (suite.id === "projects") {
+    if (!o.offline) await fetchProjects(manifest(), (line) => o.log?.(`  ${line}`));
+    const projects = bakeProjects((line) => o.log?.(line));
+    if (!projects.length) {
+      throw new Error("none of the projects are downloaded (bun run fetch-projects)");
+    }
+    const h = new Bun.CryptoHasher("sha256")
+      .update(hashSource(dir))
+      .update(fs.readFileSync(path.join(ROOT, "src/bake.ts")))
+      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")));
+    for (const p of projects) h.update(p.id);
+    return {
+      sb3: path.join(BUILD_DIR, "projects"),
+      hash: h.digest("hex").slice(0, 16),
+      projects,
+      // The replay stops itself at the budget; this leaves time to load and for a stuck frame.
+      timeoutMs: BUDGET_MS + 120_000,
+    };
+  }
   const sb3 = path.join(BUILD_DIR, `${suite.id}.sb3`);
   await fractch("check", dir);
   await fractch("to", sb3, "from", dir);

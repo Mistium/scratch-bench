@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parity } from "./suites.ts";
+import { parity, projects } from "./suites.ts";
 
 test("parity.parse attaches each failure message to its group", () => {
   const d = parity.parse([
@@ -47,4 +47,32 @@ test("parity.parse reads the older format without messages", () => {
     total: 11,
     failures: ["Test 5 Failed", "Test 6 Failed"],
   }]);
+});
+
+test("projects.parse reads the replay's result line, cut short or not", () => {
+  expect(projects.parse([
+    "714869495 | started",
+    "714869495 | 9179.5 | 1247/1247 | 826.5 | 4 | 41567",
+    "DONE",
+  ])).toEqual({
+    "714869495": {
+      ms: 9179.5,
+      ticks: 1247,
+      recorded_ticks: 1247,
+      worst_ms: 826.5,
+      long_frames: 4,
+      recorded_ms: 41567,
+    },
+  });
+  expect(projects.parse(["1201938491 | 60012.3 | 300/510 | 1221.6 | 0 | 10000", "DONE"]))
+    .toEqual({
+      "1201938491": {
+        ms: 60012.3,
+        ticks: 300,
+        recorded_ticks: 510,
+        worst_ms: 1221.6,
+        long_frames: 0,
+        recorded_ms: 10000,
+      },
+    });
 });

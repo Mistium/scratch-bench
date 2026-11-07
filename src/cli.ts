@@ -5,7 +5,7 @@ import "./cleanup.ts";
 import { buildSuite, type Built } from "./build.ts";
 import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
-import { measureSuite } from "./measure-suite.ts";
+import { measureSuite, statsOf } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
@@ -24,10 +24,12 @@ const USAGE = `usage: bun run bench [setup] [options]
 
   setup                   only build the suites and set up the runtimes
   --runtime a,b           runtimes to test (default: all)
-  --suite a,b             suites to run: performance, parity (default: all)
+  --suite a,b             suites to run: performance, parity, projects (default: all)
   --runs N                runs per runtime for the performance suite (default 10)
   --parity-runs N         runs per runtime for the parity suite (default 1)
-  --timeout S             seconds before a run is killed (default 300)
+  --project-runs N        runs per runtime for the projects suite (default 1)
+  --timeout S             seconds before a run is killed (default 300; for the projects suite, each
+                          project's budget plus 2 minutes)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
   --no-variants           run each runtime in its default VM mode only (not compiler and interpreter, bytecode and not)
   --offline               don't use the network; use cached runtime downloads
@@ -42,7 +44,8 @@ const { values: opts, positionals } = parseArgs({
     suite: { type: "string" },
     runs: { type: "string" },
     "parity-runs": { type: "string" },
-    timeout: { type: "string", default: "300" },
+    "project-runs": { type: "string" },
+    timeout: { type: "string" },
     display: { type: "string", default: "x11" },
     offline: { type: "boolean", default: false },
     "no-variants": { type: "boolean", default: false },
@@ -83,15 +86,24 @@ const main = async (): Promise<number> => {
   const timeoutMs = count(opts.timeout, 300) * 1000;
 
   log("Building suites from source");
-  const built = new Map<string, Built>();
+  // A suite that can't be built (projects that couldn't be downloaded, say) fails on its own.
+  const built = new Map<string, Built | Error>();
   for (const suite of suites) {
-    const b = await buildSuite(suite);
-    built.set(suite.id, b);
-    log(
-      `  ${suite.id}: ${
-        path.relative(process.cwd(), b.sb3)
-      } (source ${b.hash})`,
-    );
+    try {
+      const b = await buildSuite(suite, {
+        offline: opts.offline,
+          log,
+      });
+      built.set(suite.id, b);
+      log(
+        `  ${suite.id}: ${
+          path.relative(process.cwd(), b.sb3)
+        } (source ${b.hash})`,
+      );
+    } catch (e) {
+      built.set(suite.id, e as Error);
+      log(`  ${suite.id}: build failed: ${(e as Error).message}`);
+    }
   }
 
   log("Setting up runtimes");
@@ -110,7 +122,7 @@ const main = async (): Promise<number> => {
     }
   }
   if (command === "setup") {
-    return [...setups.values()].some((s) => s instanceof Error) ? 1 : 0;
+    return [...setups.values(), ...built.values()].some((s) => s instanceof Error) ? 1 : 0;
   }
 
   const timestamp = new Date().toISOString();
@@ -127,7 +139,7 @@ const main = async (): Promise<number> => {
       for (
         const variant of variantsToRun(
           setupVariants(setup),
-          !opts["no-variants"],
+          !opts["no-variants"] && !suite.defaultVariantOnly,
         )
       ) {
         const result = await runSuite(
@@ -179,7 +191,7 @@ const main = async (): Promise<number> => {
 const runSuite = async (
   suite: Suite,
   rt: Runtime,
-  built: Built,
+  built: Built | Error,
   setup: SetupInfo | Error,
   timeoutMs: number,
   variant: Variant | null,
@@ -187,7 +199,7 @@ const runSuite = async (
   const label = labelOf(rt.name, variant && infoOf(variant));
   const base = {
     schema_version: 1 as const,
-    suite: { id: suite.id, source_hash: built.hash },
+    suite: { id: suite.id, source_hash: built instanceof Error ? "unknown" : built.hash },
     runtime: {
       id: rt.id,
       name: rt.name,
@@ -206,6 +218,9 @@ const runSuite = async (
     log(`${suite.id} / ${label}: ${error}`);
     return { ...base, error };
   };
+  if (built instanceof Error) {
+    return fail(`suite build failed: ${built.message}`);
+  }
   if (setup instanceof Error) {
     return fail(`runtime setup failed: ${setup.message}`);
   }
@@ -215,6 +230,10 @@ const runSuite = async (
   if (!launcher && kind === "headless" && rt.gui) {
     kind = "gui";
     launcher = rt.gui;
+  }
+  if (!launcher && suite.anyLauncher && rt.headless) {
+    kind = "headless";
+    launcher = rt.headless;
   }
   if (!launcher) {
     const skipped = suite.launcher === "gui"
@@ -227,17 +246,38 @@ const runSuite = async (
 
   const total = suite.id === "parity"
     ? count(opts["parity-runs"], suite.runs)
+    : suite.id === "projects"
+    ? count(opts["project-runs"], suite.runs)
     : count(opts.runs, suite.runs);
   log(
     `${suite.id} / ${label} (${kind}): ${total} run${total > 1 ? "s" : ""}`,
   );
-  const measured = await measureSuite(suite, launcher, built.sb3, {
+  const options = {
     variant,
     runs: total,
-    timeoutMs,
+    timeoutMs: opts.timeout === undefined ? built.timeoutMs ?? timeoutMs : timeoutMs,
     displayKind: opts.display as DisplayKind,
     log,
-  });
+  };
+  if (built.projects) {
+    // Each project is its own sb3 and its own run of the runtime.
+    const results: Record<string, unknown> = {};
+    for (const p of built.projects) {
+      log(`  ${p.id} ${p.title}`);
+      const measured = await measureSuite(suite, launcher, p.sb3, options);
+      base.runs.push(...measured.runs);
+      base.runtime.display = measured.display;
+      results[p.id] = {
+        recorded_ms: p.recordedMs,
+        recorded_ticks: p.ticks,
+        ...(measured.results as object),
+      };
+    }
+    base.stats = statsOf(base.runs);
+    base.results = results;
+    return base;
+  }
+  const measured = await measureSuite(suite, launcher, built.sb3, options);
   base.runs = measured.runs;
   base.stats = measured.stats;
   base.results = measured.results;

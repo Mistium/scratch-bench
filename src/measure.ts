@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { onCleanup } from "./cleanup.ts";
 import type { Command } from "./runtimes/types.ts";
 import type { Suite } from "./suites.ts";
@@ -31,6 +32,32 @@ const childrenOf = (pid: number): number[] => {
 
 const descendantsOf = (pid: number): number[] =>
   childrenOf(pid).flatMap((c) => [c, ...descendantsOf(c)]);
+
+/** A run whose biggest process grows past this is stopped before it takes the machine with it. */
+const MEMORY_LIMIT_MB = Number(process.env.BENCH_MEMORY_LIMIT_MB) || 6144;
+
+/** The largest resident memory of `pid` and its descendants, read from /proc (Linux only). */
+const largestRssMb = (pid: number): number => {
+  const parent = new Map<number, number>();
+  const rss = new Map<number, number>();
+  for (const entry of fs.readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const status = fs.readFileSync(`/proc/${entry}/status`, "utf8");
+      parent.set(Number(entry), Number(/PPid:\s+(\d+)/.exec(status)?.[1]));
+      rss.set(Number(entry), Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] ?? 0) / 1024);
+    } catch {}
+  }
+  const inTree = (p: number): boolean => {
+    for (let at = p, hops = 0; at > 1 && hops < 64; at = parent.get(at) ?? 0, hops++) {
+      if (at === pid) return true;
+    }
+    return false;
+  };
+  let largest = 0;
+  for (const [p, mb] of rss) if (mb > largest && inTree(p)) largest = mb;
+  return largest;
+};
 
 const killGroup = (pid: number, signal: NodeJS.Signals) => {
   for (const p of descendantsOf(pid).reverse()) {
@@ -90,6 +117,15 @@ export const runOnce = async (
     timedOut = true;
     killGroup(proc.pid, "SIGKILL");
   }, timeoutMs);
+  let outOfMemory = false;
+  const memoryWatch = process.platform === "linux"
+    ? setInterval(() => {
+      if (largestRssMb(proc.pid) > MEMORY_LIMIT_MB) {
+        outOfMemory = true;
+        killGroup(proc.pid, "SIGKILL");
+      }
+    }, 1000)
+    : undefined;
 
   let first: number | null = null;
   let done: number | null = null;
@@ -124,6 +160,7 @@ export const runOnce = async (
   killGroup(proc.pid, "SIGKILL");
   const code = await proc.exited;
   clearTimeout(timer);
+  clearInterval(memoryWatch);
   unregister();
   result.exit_code = code;
   try {
@@ -134,7 +171,9 @@ export const runOnce = async (
   } catch {}
 
   if (done === null) {
-    result.error = timedOut
+    result.error = outOfMemory
+      ? `stopped after a process used more than ${MEMORY_LIMIT_MB} MB of memory`
+      : timedOut
       ? `timed out after ${timeoutMs / 1000}s`
       : `exited (code ${code}) before the suite finished${
         stderrTail
