@@ -114,7 +114,7 @@ const option = computed(() => {
     </p>
     <p v-if="history && !hasData"
       class="panel__note">Parity history appears here once there is parity data.</p>
-    <ChartBase v-else :option="option"
+    <ChartBase v-else :option="option" :height="560"
       label="Parity pass rate of each runtime over time" />
   </section>
 </template>

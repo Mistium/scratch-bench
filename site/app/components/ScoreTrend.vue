@@ -91,7 +91,7 @@ const option = computed(() => {
     </header>
     <p v-if="scores && scores.timestamps.length < 2"
       class="panel__note">History appears here once there is more than one run.</p>
-    <ChartBase :option="option"
+    <ChartBase :option="option" :height="560"
       label="Overall performance of each runtime over time" />
   </section>
 </template>
