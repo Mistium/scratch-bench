@@ -124,8 +124,32 @@ test("bake places the recorded events by tick and rewires the project's inputs t
   expect(ops(stage)).toContain("data_setvariableto");
 });
 
-test("bake stops at a second green flag and at maxFrames", () => {
+test("bake stops at a second green flag and after maxSeconds", () => {
   const twoFlags = { ...recording, inputs: [...recording.inputs, { frame: 3, type: "greenFlag" as const }] };
   expect(bake(project(), twoFlags, { id: "1", budgetMs: 1000 }).ticks).toBe(4);
-  expect(bake(project(), recording, { id: "1", budgetMs: 1000, maxFrames: 2 }).ticks).toBe(3);
+  // 2 frames at 30 fps; at 15 fps the same 2 frames are 0.133 s.
+  expect(bake(project(), recording, { id: "1", budgetMs: 1000, maxSeconds: 2 / 30 }).ticks).toBe(3);
+  const slow = bake(project(), { ...recording, framerate: 15 }, { id: "1", budgetMs: 1000, maxSeconds: 2 / 15 });
+  expect([slow.ticks, slow.recordedMs]).toEqual([3, 133]);
+});
+
+test("bake parks stop all inside a custom block, since stop this script would return to the caller", () => {
+  const p = project();
+  Object.assign(p.targets[1].blocks, {
+    def: block("procedures_definition", { topLevel: true, next: "end", inputs: { custom_block: [1, "proto"] } }),
+    proto: block("procedures_prototype", {
+      parent: "def",
+      shadow: true,
+      mutation: { tagName: "mutation", children: [], proccode: "end", argumentids: "[]", warp: "false" },
+    }),
+    end: block("control_stop", {
+      parent: "def",
+      fields: { STOP_OPTION: ["all", null] },
+      mutation: { tagName: "mutation", children: [], hasnext: "false" },
+    }),
+  });
+  const blocks = bake(p, recording, { id: "1", budgetMs: 1000 }).project.targets[1].blocks;
+  const sent = blocks[blocks.def.next];
+  expect(sent.opcode).toBe("event_broadcast");
+  expect(blocks[sent.next].opcode).toBe("control_wait_until");
 });

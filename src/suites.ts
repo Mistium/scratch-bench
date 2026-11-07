@@ -49,6 +49,8 @@ export interface Suite<T = unknown> {
   parse(lines: string[]): T;
   /** Run with the other launcher when a runtime doesn't have this one. */
   anyLauncher?: boolean;
+  /** Run each runtime in its default mode only, not every variant. */
+  defaultVariantOnly?: boolean;
 }
 
 const PERF_LINE =
@@ -124,6 +126,8 @@ export const projects: Suite<Record<string, ProjectRun>> = {
   source: "projects",
   launcher: "gui",
   anyLauncher: true,
+  // Each project plays in real time, so every variant would add minutes to the nightly run.
+  defaultVariantOnly: true,
   runs: 1,
   isDone: (line) => line === "DONE",
   parse(lines) {

@@ -20,13 +20,13 @@ export interface ProjectEntry {
 }
 
 /**
- * How much of each recording to replay. By default, the daily set's first 10 seconds with a
- * minute each at most; `--projects all` (or a list of ids) replays whole recordings for up to 5
- * minutes each.
+ * How much of each recording to replay. By default, the first 10 recorded seconds of the daily
+ * set, for 30 seconds each at most, so the nightly run stays short; `--projects all` (or a list of
+ * ids) replays whole recordings for up to 5 minutes each.
  */
 export interface Selection {
   projects: ProjectEntry[];
-  maxFrames?: number;
+  maxSeconds?: number;
   budgetMs: number;
 }
 
@@ -38,7 +38,7 @@ export const recordingFile = (id: string) => path.join(PROJECTS_DIR, "recordings
 
 export const selectProjects = (spec?: string): Selection => {
   const all = manifest();
-  if (!spec) return { projects: all.filter((p) => p.daily), maxFrames: 300, budgetMs: 60_000 };
+  if (!spec) return { projects: all.filter((p) => p.daily), maxSeconds: 10, budgetMs: 30_000 };
   if (spec === "all") return { projects: all, budgetMs: 300_000 };
   const ids = spec.split(",").map((x) => x.trim()).filter(Boolean);
   for (const id of ids) {
@@ -67,7 +67,7 @@ export const bakeProjects = (s: Selection): BakedProject[] => {
     const baked = bake(
       JSON.parse(new TextDecoder().decode(files.get("project.json"))),
       recording,
-      { id: p.id, maxFrames: s.maxFrames, budgetMs: s.budgetMs },
+      { id: p.id, maxSeconds: s.maxSeconds, budgetMs: s.budgetMs },
     );
     files.set("project.json", new TextEncoder().encode(JSON.stringify(baked.project)));
     for (const [name, data] of baked.assets) files.set(name, data);

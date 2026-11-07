@@ -1,30 +1,13 @@
 /**
  * Bakes a recording of someone using a project into the project itself, so any Scratch runtime can
- * replay it with nothing but the green flag: no browser, no input injection.
- *
- * A sprite named "replay pointer" is added on top. Its green-flag script steps through the
- * recorded events one scheduler tick at a time (its thread is the first in the tick, so each
- * tick's events land before the project's scripts run) and stands in for the mouse itself, a
- * transparent 2px sprite at the recorded pointer position. The project's input blocks are
- * rewired to it:
- *
- * - `mouse x`, `mouse y`, `mouse down?`, `key _ pressed?` and `answer` read variables and lists
- *   the pointer keeps;
- * - "mouse-pointer" in touching, distance, go to, glide and point towards menus is the pointer;
- * - `when _ key pressed`, `when this sprite clicked` and `when stage clicked` become broadcasts
- *   the pointer sends (a click goes to the sprites under the pointer);
- * - `ask and wait` waits for the recorded answer;
- * - `stop all` stops every other script and deletes clones without stopping the replay;
- * - slider changes the recording made are broadcast to scripts that set the variable.
- *
- * The pointer times every tick with `days since 2000` and, when the recording ends (or the time
- * budget runs out), adds a result line and DONE to the stage's `output` list:
+ * replay it from the green flag alone (projects/README.md explains what it does and what it only
+ * approximates). A "replay pointer" sprite on top plays the recorded events a scheduler tick at a
+ * time, its thread first in each tick, and stands in for the mouse; the project's input blocks are
+ * rewired to it. When the recording ends or the budget runs out, it prints
  *
  *     <id> | <ms> | <ticks run>/<ticks recorded> | <worst gap ms> | <long frames> | <recorded ms>
  *
- * Events are placed by tick rather than by frame, so they reach the project at the same point in
- * its run however many ticks a runtime fits into a frame. It plays in real time, as a person
- * would see it, so the time is the recorded time plus whatever the runtime couldn't keep up with.
+ * then DONE, to the stage's `output` list and the TurboWarp debugger's log block.
  */
 
 export type Input =
@@ -46,8 +29,8 @@ export interface Recording {
 
 export interface BakeOptions {
   id: string;
-  /** Replay at most this many recorded frames. */
-  maxFrames?: number;
+  /** Replay at most this many seconds of the recording. */
+  maxSeconds?: number;
   /** Real time the replay may take before it stops and reports how far it got. */
   budgetMs: number;
 }
@@ -97,14 +80,6 @@ const SPECIAL_KEYS: Record<string, string> = {
   End: "end",
   PageUp: "page up",
   PageDown: "page down",
-};
-const KEY_NAMES = [...new Set(Object.values(SPECIAL_KEYS))];
-const MAKEY_KEYS: Record<string, string> = {
-  SPACE: "space",
-  LEFT: "left arrow",
-  UP: "up arrow",
-  RIGHT: "right arrow",
-  DOWN: "down arrow",
 };
 
 /** Blocks that can make a script wait a tick or more. */
@@ -178,7 +153,6 @@ const repeat = (times: In, body: Blk[]) => b("control_repeat", { TIMES: times, S
 const eq = (x: In, y: In) => b("operator_equals", { OPERAND1: x, OPERAND2: y });
 const gt = (x: In, y: In) => b("operator_gt", { OPERAND1: x, OPERAND2: y });
 const or = (x: Blk, y: Blk) => b("operator_or", { OPERAND1: x, OPERAND2: y });
-const and = (x: Blk, y: Blk) => b("operator_and", { OPERAND1: x, OPERAND2: y });
 const not = (x: Blk) => b("operator_not", { OPERAND: x });
 const sub = (x: In, y: In) => b("operator_subtract", { NUM1: x, NUM2: y });
 const add = (x: In, y: In) => b("operator_add", { NUM1: x, NUM2: y });
@@ -187,7 +161,6 @@ const div = (x: In, y: In) => b("operator_divide", { NUM1: x, NUM2: y });
 const round = (x: In) => b("operator_round", { NUM: x });
 const join = (...parts: In[]): In =>
   parts.reduceRight((rest, part) => b("operator_join", { STRING1: part, STRING2: rest }));
-const letter = (i: In, s: In) => b("operator_letter_of", { LETTER: i, STRING: s });
 const days = () => b("sensing_dayssince2000");
 const item = (i: In, l: Ref) => b("data_itemoflist", { INDEX: i }, { LIST: field(l) });
 const itemNum = (x: In, l: Ref) => b("data_itemnumoflist", { ITEM: x }, { LIST: field(l) });
@@ -326,24 +299,6 @@ class Builder {
     return this.block(value, parent);
   }
 
-  /** A copy of an existing reporter and everything in it. */
-  copy(id: string): Existing {
-    const copyOf = (from: string, parent: string | null): string => {
-      const to = this.id();
-      const block = structuredClone(this.blocks[from]);
-      block.parent = parent;
-      for (const input of Object.values(block.inputs) as unknown[][]) {
-        for (let k = 1; k < input.length; k++) {
-          if (typeof input[k] === "string" && input[k] as string in this.blocks) {
-            input[k] = copyOf(input[k] as string, to);
-          }
-        }
-      }
-      this.blocks[to] = block;
-      return to;
-    };
-    return { existing: copyOf(id, null) };
-  }
 }
 
 // ---- reading and rewriting project blocks ----
@@ -413,6 +368,15 @@ const replaceCommand = (blocks: Blocks, build: Builder, id: string, cmds: Blk[])
   deleteTree(blocks, id);
 };
 
+/** Whether a block is in a custom block's definition. */
+const inProcedure = (blocks: Blocks, id: string): boolean => {
+  let at = blocks[id];
+  for (const seen = new Set<string>(); at?.parent && !seen.has(at.parent); at = blocks[at.parent]) {
+    seen.add(at.parent);
+  }
+  return at?.opcode === "procedures_definition";
+};
+
 /** Whether running a script from `start` can wait a tick (custom blocks run with screen refresh too). */
 const scriptYields = (blocks: Blocks, start: string | null, seen = new Set<string>()): boolean => {
   for (let id = start; id && isBlock(blocks[id]); id = blocks[id].next) {
@@ -443,7 +407,9 @@ const turbowarpConfig = (stage: Block): { width: number; height: number } => {
   for (const comment of Object.values(stage.comments ?? {}) as Block[]) {
     if (typeof comment.text !== "string" || !comment.text.includes("// _twconfig_")) continue;
     // Every runtime plays at 30 fps, so the replay takes the same real time on all of them.
-    comment.text = comment.text.replace(/"framerate":\d+,?/, "").replace(/,(\s*})/, "$1");
+    comment.text = comment.text
+      .replace(/"(framerate|turbo)":[^,}]*,?/g, "")
+      .replace(/,(\s*})/, "$1");
     const size = (key: string) => Number(new RegExp(`"${key}":(\\d+)`).exec(comment.text)?.[1]);
     return { width: size("width") || 480, height: size("height") || 360 };
   }
@@ -506,10 +472,9 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const mouseY = variable(stage, "replay mouse y");
   const mouseDown = variable(stage, "replay mouse down");
   const answer = variable(stage, "replay answer", "");
-  const value = variable(stage, "replay value", "");
+  const values = list(stage, "replay values");
   const keys = list(stage, "replay keys");
   const answers = list(stage, "replay answers");
-  const keyNames = list(stage, "replay key names", KEY_NAMES);
   const output = list(stage, "output");
 
   // ---- the recorded events, by tick ----
@@ -519,7 +484,7 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const endFrame = Math.min(
     recording.frames,
     flags[1] ?? Infinity,
-    firstFrame + (o.maxFrames ?? Infinity),
+    firstFrame + Math.round((o.maxSeconds ?? Infinity) * (recording.framerate || 30)),
   );
   const tickOf: number[] = [];
   for (let f = firstFrame, t = 0; f <= endFrame; t += recording.passes[f++] ?? 0) tickOf[f] = t;
@@ -603,16 +568,10 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
             const key = String(menu?.fields?.KEY_OPTION?.[0] ?? "").toLowerCase();
             expr = key === "any" ? gt(length(keys), 0) : contains(keys, key);
           } else {
-            // Scratch takes a key name, or else the first letter of whatever is in the slot.
-            const slot = (): In =>
-              Array.isArray(reporter) ? { primitive: reporter } : build.copy(reporter);
-            expr = or(
-              or(
-                contains(keys, slot()),
-                and(not(contains(keyNames, slot())), contains(keys, letter(1, slot()))),
-              ),
-              and(eq(slot(), "any"), gt(length(keys), 0)),
-            );
+            // A reporter in the slot moves into the new block (a key name or a letter; "any" and
+            // Scratch's first-letter rule for longer text aren't handled).
+            if (!Array.isArray(reporter)) input[1] = null;
+            expr = contains(keys, Array.isArray(reporter) ? { primitive: reporter } : { existing: reporter });
           }
           replaceReporter(blocks, id, (p) => ({ block: build.block(expr, p) }));
           break;
@@ -627,9 +586,13 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
         case "control_stop":
           if (block.fields.STOP_OPTION[0] === "all") {
             stopsAll = true;
+            // In a custom block, "stop this script" only returns to the caller, so the thread
+            // waits instead, until the stop-all scripts stop it later in the tick.
             replaceCommand(blocks, build, id, [
               b("event_broadcast", { BROADCAST_INPUT: "replay stop all" }),
-              stop("this script"),
+              inProcedure(blocks, id)
+                ? b("control_wait_until", { CONDITION: eq(1, 0) })
+                : stop("this script"),
             ]);
           }
           break;
@@ -640,15 +603,6 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
           const once = scriptYields(blocks, block.next) ? "once " : "";
           block.opcode = "event_whenbroadcastreceived";
           block.fields = { BROADCAST_OPTION: broadcast(`replay key ${once}${key}`) };
-          break;
-        }
-        case "makeymakey_whenMakeyKeyPressed": {
-          const menu = blocks[block.inputs.KEY?.[1]];
-          const raw = String(menu?.fields?.KEY?.[0] ?? "");
-          deleteTree(blocks, block.inputs.KEY?.[1]);
-          block.opcode = "event_whenbroadcastreceived";
-          block.inputs = {};
-          block.fields = { BROADCAST_OPTION: broadcast(`replay key once ${MAKEY_KEYS[raw] ?? raw.toLowerCase()}`) };
           break;
         }
         case "event_whenthisspriteclicked":
@@ -704,7 +658,7 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
       const [name] = target.variables[s.id];
       build.script(
         b("event_whenbroadcastreceived", {}, { BROADCAST_OPTION: broadcast(`replay set ${s.n}`) }),
-        [set({ ref: "var", name, id: s.id }, value)],
+        [set({ ref: "var", name, id: s.id }, item(s.n, values))],
         0,
         -300 - 100 * s.n,
       );
@@ -761,12 +715,14 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const evKind = list(pointer, "event kind", events.map((e) => e[1]));
   const evA = list(pointer, "event a", events.map((e) => e[2]));
   const evB = list(pointer, "event b", events.map((e) => e[3]));
+  // `replace item` needs the item to be there already.
+  stage.lists[values.id][1] = Array.from(setters.values(), () => "");
   const clickables = list(pointer, "clickable sprites", clickable);
   const allSprites = list(pointer, "sprites", sprites.map((s: Block) => s.name));
 
   const dayMs = 86_400_000;
-  // Every runtime plays at 30 fps, so this is how long a runtime that keeps up takes.
-  const recordedMs = Math.round(((endFrame - firstFrame) / 30) * 1000);
+  // How long the replayed part took when it was recorded.
+  const recordedMs = Math.round(((endFrame - firstFrame) / (recording.framerate || 30)) * 1000);
   const build = new Builder(pointer.blocks, broadcast);
   const on = (k: string, body: Blk[]) => ifThen(eq(kind, k), body);
   const send = (...name: In[]) => b("event_broadcast", { BROADCAST_INPUT: name.length > 1 ? join(...name) : name[0] });
@@ -802,7 +758,11 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
       on("release", [remove(keys, itemNum(a, keys))]),
       on("wheel", [send("replay key ", a), send("replay key once ", a)]),
       on("answer", [push(answers, a)]),
-      on("set", [set(value, bArg), send("replay set ", a)]),
+      // Each slider has its own item, so two set in the same tick keep their own values.
+      on("set", [
+        b("data_replaceitemoflist", { INDEX: a, ITEM: bArg }, { LIST: field(values) }),
+        send("replay set ", a),
+      ]),
       change(i, 1),
     ]),
     set(next, item(i, evTick)),

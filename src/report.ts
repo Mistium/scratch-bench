@@ -157,7 +157,9 @@ export const renderReport = (results: SuiteResult[]): string => {
   );
   out.push("");
 
-  const projects = results.filter((r) => r.suite.id === "projects" && !r.skipped);
+  const projects = results.filter((r) =>
+    r.suite.id === "projects" && !r.skipped && Object.keys(r.results ?? {}).length
+  );
   if (projects.length) {
     type Replayed = {
       ms?: Summary;
@@ -168,6 +170,10 @@ export const renderReport = (results: SuiteResult[]): string => {
       error?: string;
     };
     const resultsOf = (r: SuiteResult) => (r.results as Record<string, Replayed>) ?? {};
+    // A headless launcher has no renderer and may not pace frames, so it isn't comparable.
+    const nameOf = (r: SuiteResult) =>
+      labelOf(r.runtime.name, r.runtime.variant) +
+      (r.runtime.launcher === "headless" ? " (headless)" : "");
     const ids = [...new Set(projects.flatMap((r) => Object.keys(resultsOf(r))))];
     out.push(
       "Projects: median ms to replay each recording in real time (recorded: how long it took when recorded; " +
@@ -175,7 +181,7 @@ export const renderReport = (results: SuiteResult[]): string => {
     );
     out.push(
       table(
-        ["project", "recorded", ...projects.map((r) => labelOf(r.runtime.name, r.runtime.variant))],
+        ["project", "recorded", ...projects.map(nameOf)],
         ids.map((id) => [
           id,
           num(projects.map((r) => resultsOf(r)[id]?.recorded_ms).find((x) => x !== undefined) ?? NaN),
@@ -193,9 +199,10 @@ export const renderReport = (results: SuiteResult[]): string => {
     out.push("");
     for (const r of projects) {
       const all = Object.values(resultsOf(r));
+      if (!all.length) continue;
       const done = all.filter((p) => !p.error && p.ticks === p.recorded_ticks);
       out.push(
-        `${labelOf(r.runtime.name, r.runtime.variant)}: ${done.length}/${all.length} replayed in full, ${
+        `${nameOf(r)}: ${done.length}/${all.length} replayed in full, ${
           num(done.reduce((n, p) => n + p.ms!.median, 0))
         } ms in total, ${all.filter((p) => p.error).length} errors`,
       );

@@ -26,7 +26,7 @@ const USAGE = `usage: bun run bench [setup] [options]
   --runtime a,b           runtimes to test (default: all)
   --suite a,b             suites to run: performance, parity, projects (default: all)
   --projects all|id,id    projects to replay in the projects suite, whole recordings (default: the daily
-                          set, 10 seconds of each)
+                          set, 10 recorded seconds of each)
   --runs N                runs per runtime for the performance suite (default 10)
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs per runtime for the projects suite (default 1)
@@ -88,19 +88,25 @@ const main = async (): Promise<number> => {
   const timeoutMs = count(opts.timeout, 300) * 1000;
 
   log("Building suites from source");
-  const built = new Map<string, Built>();
+  // A suite that can't be built (projects that couldn't be downloaded, say) fails on its own.
+  const built = new Map<string, Built | Error>();
   for (const suite of suites) {
-    const b = await buildSuite(suite, {
-      offline: opts.offline,
-      projects: opts.projects,
-      log,
-    });
-    built.set(suite.id, b);
-    log(
-      `  ${suite.id}: ${
-        path.relative(process.cwd(), b.sb3)
-      } (source ${b.hash})`,
-    );
+    try {
+      const b = await buildSuite(suite, {
+        offline: opts.offline,
+        projects: opts.projects,
+        log,
+      });
+      built.set(suite.id, b);
+      log(
+        `  ${suite.id}: ${
+          path.relative(process.cwd(), b.sb3)
+        } (source ${b.hash})`,
+      );
+    } catch (e) {
+      built.set(suite.id, e as Error);
+      log(`  ${suite.id}: build failed: ${(e as Error).message}`);
+    }
   }
 
   log("Setting up runtimes");
@@ -136,7 +142,7 @@ const main = async (): Promise<number> => {
       for (
         const variant of variantsToRun(
           setupVariants(setup),
-          !opts["no-variants"],
+          !opts["no-variants"] && !suite.defaultVariantOnly,
         )
       ) {
         const result = await runSuite(
@@ -188,7 +194,7 @@ const main = async (): Promise<number> => {
 const runSuite = async (
   suite: Suite,
   rt: Runtime,
-  built: Built,
+  built: Built | Error,
   setup: SetupInfo | Error,
   timeoutMs: number,
   variant: Variant | null,
@@ -196,7 +202,7 @@ const runSuite = async (
   const label = labelOf(rt.name, variant && infoOf(variant));
   const base = {
     schema_version: 1 as const,
-    suite: { id: suite.id, source_hash: built.hash },
+    suite: { id: suite.id, source_hash: built instanceof Error ? "unknown" : built.hash },
     runtime: {
       id: rt.id,
       name: rt.name,
@@ -215,6 +221,9 @@ const runSuite = async (
     log(`${suite.id} / ${label}: ${error}`);
     return { ...base, error };
   };
+  if (built instanceof Error) {
+    return fail(`suite build failed: ${built.message}`);
+  }
   if (setup instanceof Error) {
     return fail(`runtime setup failed: ${setup.message}`);
   }

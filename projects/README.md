@@ -18,10 +18,11 @@ bun run fetch-projects 1201938491 # just some
 ```
 
 A project whose `project.json` no longer matches the manifest has been edited since it was recorded,
-so it is skipped.
+so it is skipped. The suite runs each runtime in its default mode only, not every variant, to keep the nightly
+run short.
 
 ```sh
-bun run bench --suite projects                    # the daily set: 10 seconds of each, a minute at most
+bun run bench --suite projects                    # the daily set: 10 recorded seconds of each, 30 s at most
 bun run bench --suite projects --projects all     # every project, whole recordings, 5 minutes at most
 bun run bench --suite projects --projects 1201938491,324569477
 ```
@@ -43,20 +44,29 @@ project's input blocks are rewired to it:
 - slider changes the recording made set the variable.
 
 Events are placed by tick, not by frame, so they reach the project at the same point in its run
-however many ticks a runtime fits into each frame. The replay plays in real time, as a person would
-see it. A runtime that keeps up takes about as long as the recording did, and one that can't takes
-longer. Every runtime plays at 30 fps; a TurboWarp frame rate setting is removed.
+however many ticks a runtime fits into each frame. Frames are paced as usual, at 30 fps for every
+runtime (a TurboWarp frame rate or turbo setting is removed). A project that redraws every tick plays
+in real time, so a runtime that keeps up takes about as long as the recording did, and one that
+can't takes longer. A project that doesn't redraw runs as many ticks per frame as the runtime fits,
+so a fast runtime can finish well ahead of the recording. A runtime with only a headless launcher
+(rust-vm) has no renderer and may not pace frames at all, so its results are marked "(headless)"
+and aren't comparable with the others.
 
-The browser runners render with SwiftShader (software WebGL) by default, so every host draws the same
-way; `BENCH_GPU=1` renders through Vulkan instead, which is many times faster for render-heavy
-projects. A run whose biggest process grows past 6 GB (`BENCH_MEMORY_LIMIT_MB`) is stopped and
+A run whose biggest process grows past 6 GB (`BENCH_MEMORY_LIMIT_MB`) is stopped and
 reported as an error, so a runtime that leaks can't take the machine down with it.
 
 Each project reports how long the replay took, how many ticks it got through, the longest gap between
 two ticks (its worst frame), how many frames took longer than 50 ms, and how long it took to load.
 
-Some things are approximations. A held key's repeats restart a key script that finishes at once,
-while a key script that waits only starts on the first press. A click reaches every clickable sprite
-under the pointer, not just the top one. Dragging sprites isn't replayed.
+Some things are approximations, the same on every runtime:
+
+- Real key and click hats leave a script that's still running alone; the broadcasts that replace
+  them restart it. A key script that waits only starts on a fresh press (not on a held key's
+  repeats), but pressing again while it runs restarts it, and a click restarts that sprite's
+  running click scripts in its other clones.
+- A click reaches every clickable sprite under the pointer, including fully ghosted ones, not just
+  the top one. Dragging sprites isn't replayed.
+- The pointer moving counts as a visual change, so it ends a frame where a real mouse move wouldn't.
+- Turbo mode changes in a recording are ignored, and a recording stops at a second green flag.
 
 The projects are by their authors on scratch.mit.edu, shared under CC BY-SA 2.0.

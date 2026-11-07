@@ -34,16 +34,28 @@ const descendantsOf = (pid: number): number[] =>
   childrenOf(pid).flatMap((c) => [c, ...descendantsOf(c)]);
 
 /** A run whose biggest process grows past this is stopped before it takes the machine with it. */
-const MEMORY_LIMIT_MB = Number(process.env.BENCH_MEMORY_LIMIT_MB ?? 6144);
+const MEMORY_LIMIT_MB = Number(process.env.BENCH_MEMORY_LIMIT_MB) || 6144;
 
+/** The largest resident memory of `pid` and its descendants, read from /proc (Linux only). */
 const largestRssMb = (pid: number): number => {
-  let largest = 0;
-  for (const p of [pid, ...descendantsOf(pid)]) {
+  const parent = new Map<number, number>();
+  const rss = new Map<number, number>();
+  for (const entry of fs.readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
     try {
-      const kb = /VmRSS:\s+(\d+)/.exec(fs.readFileSync(`/proc/${p}/status`, "utf8"))?.[1];
-      largest = Math.max(largest, Number(kb ?? 0) / 1024);
+      const status = fs.readFileSync(`/proc/${entry}/status`, "utf8");
+      parent.set(Number(entry), Number(/PPid:\s+(\d+)/.exec(status)?.[1]));
+      rss.set(Number(entry), Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] ?? 0) / 1024);
     } catch {}
   }
+  const inTree = (p: number): boolean => {
+    for (let at = p, hops = 0; at > 1 && hops < 64; at = parent.get(at) ?? 0, hops++) {
+      if (at === pid) return true;
+    }
+    return false;
+  };
+  let largest = 0;
+  for (const [p, mb] of rss) if (mb > largest && inTree(p)) largest = mb;
   return largest;
 };
 

@@ -87,7 +87,8 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
     const h = new Bun.CryptoHasher("sha256")
       .update(hashSource(dir))
       .update(fs.readFileSync(path.join(ROOT, "src/bake.ts")))
-      .update(JSON.stringify([selection.maxFrames, selection.budgetMs]));
+      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")))
+      .update(JSON.stringify([selection.maxSeconds, selection.budgetMs]));
     for (const p of projects) h.update(p.id);
     return {
       sb3: path.join(BUILD_DIR, "projects"),

@@ -10,7 +10,14 @@ const UA = { "User-Agent": "scratch-bench (github.com/gradylink/scratch-bench)" 
 
 const get = async (url: string): Promise<Uint8Array> => {
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(120_000) });
+    let res: Response;
+    try {
+      res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(120_000) });
+    } catch (e) {
+      if (attempt === 3) throw e;
+      await Bun.sleep(1000 * attempt);
+      continue;
+    }
     if (res.ok) return new Uint8Array(await res.arrayBuffer());
     if (attempt === 3 || res.status === 404) throw new Error(`${res.status} ${url}`);
     await Bun.sleep(1000 * attempt);
