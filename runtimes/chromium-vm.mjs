@@ -119,9 +119,11 @@ const server = http.createServer((req, res) => {
       executablePath: exe,
       args: [
         ...(process.env.CHROME_NO_SANDBOX ? ["--no-sandbox"] : []),
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-        "--enable-unsafe-swiftshader",
+        // Software WebGL by default, so every host renders the same way; BENCH_GPU=1 uses the
+        // GPU through Vulkan instead, which is far faster for render-heavy projects.
+        ...(process.env.BENCH_GPU === "1"
+          ? ["--use-angle=vulkan", "--enable-features=Vulkan", "--ignore-gpu-blocklist"]
+          : ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]),
         "--autoplay-policy=no-user-gesture-required",
       ],
     });

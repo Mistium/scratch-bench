@@ -24,6 +24,10 @@ MistWarp and 02engine, whose schedulers check the tick timer after a tick:
 bun run bench --suite projects --runtime scratch,turbowarp
 ```
 
+Rendering uses SwiftShader (software WebGL) by default, so every host draws the same way. With a GPU,
+`BENCH_GPU=1` renders through Vulkan instead, which makes render-heavy projects many times faster:
+all 132 replay in TurboWarp in about 16 minutes on an RTX 2070.
+
 ## How a replay works
 
 `runtimes/chromium/index.html` (`replay`) loads each project, applies its TurboWarp settings where the
