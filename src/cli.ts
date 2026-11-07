@@ -11,6 +11,7 @@ import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
 import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
 import { summarize } from "./stats.ts";
+import { selectProjects } from "./projects.ts";
 import { selectSuites, type Suite } from "./suites.ts";
 import {
   infoOf,
@@ -30,7 +31,8 @@ const USAGE = `usage: bun run bench [setup] [options]
   --runs N                runs per runtime for the performance suite (default 10)
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs per runtime for the projects suite (default 1)
-  --timeout S             seconds before a run is killed (default 300)
+  --timeout S             seconds before a run is killed (default 300; for the projects suite, each
+                          project's budget plus 2 minutes)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
   --no-variants           run each runtime in its default VM mode only (not compiler and interpreter, bytecode and not)
   --offline               don't use the network; use cached runtime downloads
@@ -47,7 +49,7 @@ const { values: opts, positionals } = parseArgs({
     "parity-runs": { type: "string" },
     "project-runs": { type: "string" },
     projects: { type: "string" },
-    timeout: { type: "string", default: "300" },
+    timeout: { type: "string" },
     display: { type: "string", default: "x11" },
     offline: { type: "boolean", default: false },
     "no-variants": { type: "boolean", default: false },
@@ -85,6 +87,8 @@ const main = async (): Promise<number> => {
 
   const runtimes = selectRuntimes(split(opts.runtime));
   const suites = selectSuites(split(opts.suite));
+  // A mistyped --projects id is a usage error, not a failed build.
+  if (suites.some((s) => s.id === "projects")) selectProjects(opts.projects);
   const timeoutMs = count(opts.timeout, 300) * 1000;
 
   log("Building suites from source");
@@ -125,7 +129,7 @@ const main = async (): Promise<number> => {
     }
   }
   if (command === "setup") {
-    return [...setups.values()].some((s) => s instanceof Error) ? 1 : 0;
+    return [...setups.values(), ...built.values()].some((s) => s instanceof Error) ? 1 : 0;
   }
 
   const timestamp = new Date().toISOString();
@@ -258,7 +262,7 @@ const runSuite = async (
   const options = {
     variant,
     runs: total,
-    timeoutMs: Math.max(timeoutMs, built.timeoutMs ?? 0),
+    timeoutMs: opts.timeout === undefined ? built.timeoutMs ?? timeoutMs : timeoutMs,
     displayKind: opts.display as DisplayKind,
     log,
   };

@@ -59,30 +59,25 @@ const fetchProject = async (id: string, want: string): Promise<string> => {
   return "fetched";
 };
 
-/** Fetches the projects not downloaded yet; returns how many couldn't be. */
+/** Fetches the projects not downloaded yet. */
 export const fetchProjects = async (
   wanted: ProjectEntry[],
   log: (line: string) => void,
-): Promise<number> => {
+): Promise<void> => {
   fs.mkdirSync(PROJECT_FILES, { recursive: true });
   const missing = wanted.filter((p) => !fs.existsSync(projectFile(p.id)));
-  let failed = 0;
   let next = 0;
   const worker = async () => {
     while (next < missing.length) {
       const p = missing[next++];
       try {
-        const status = await fetchProject(p.id, p.sha256);
-        if (status !== "fetched") failed++;
-        log(`${p.id} ${p.title}: ${status}`);
+        log(`${p.id} ${p.title}: ${await fetchProject(p.id, p.sha256)}`);
       } catch (e) {
-        failed++;
         log(`${p.id} ${p.title}: ${(e as Error).message}`);
       }
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));
-  return failed;
 };
 
 if (import.meta.main) {

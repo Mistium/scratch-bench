@@ -46,8 +46,9 @@ project's input blocks are rewired to it:
 Events are placed by tick, not by frame, so they reach the project at the same point in its run
 however many ticks a runtime fits into each frame. Frames are paced as usual, at 30 fps for every
 runtime (a TurboWarp frame rate or turbo setting is removed). A project that redraws every tick plays
-in real time, so a runtime that keeps up takes about as long as the recording did, and one that
-can't takes longer. A project that doesn't redraw runs as many ticks per frame as the runtime fits,
+in real time, so a runtime that keeps up takes about as long as the replayed frames at 30 fps (the
+report's "recorded" column; twice the recorded time for a 60 fps recording), and one that can't
+takes longer. A project that doesn't redraw runs as many ticks per frame as the runtime fits,
 so a fast runtime can finish well ahead of the recording. A runtime with only a headless launcher
 (rust-vm) has no renderer and may not pace frames at all, so its results are marked "(headless)"
 and aren't comparable with the others.
@@ -66,6 +67,12 @@ Some things are approximations, the same on every runtime:
   running click scripts in its other clones.
 - A click reaches every clickable sprite under the pointer, including fully ghosted ones, not just
   the top one. Dragging sprites isn't replayed.
+- `key _ pressed?` with a reporter in its slot checks the key that reporter gives, so "any", key
+  codes and Scratch's first-letter rule for longer text aren't handled there. Makey Makey hats
+  never fire.
+- `stop all` lets scripts later in the same tick run one more step, and a clone made in that step
+  survives. Inside a custom block run without screen refresh, it can spin for up to half a second
+  first.
 - The pointer moving counts as a visual change, so it ends a frame where a real mouse move wouldn't.
 - Turbo mode changes in a recording are ignored, and a recording stops at a second green flag.
 

@@ -113,9 +113,9 @@ test("bake places the recorded events by tick and rewires the project's inputs t
   expect(blocks.click.fields.BROADCAST_OPTION[0]).toBe("replay click Cat");
   expect(blocks[blocks.click.next].opcode).toBe("control_if");
   expect(blocks.say.inputs.MESSAGE[1]).toEqual([12, "replay mouse x", expect.any(String)]);
-  // stop all broadcasts instead, then stops its own script.
+  // stop all broadcasts instead, then waits for the stop-all scripts to stop it.
   expect(blocks[blocks.say.next].opcode).toBe("event_broadcast");
-  expect(blocks[blocks[blocks.say.next].next].fields.STOP_OPTION[0]).toBe("this script");
+  expect(blocks[blocks[blocks.say.next].next].opcode).toBe("control_wait_until");
   expect(blocks[blocks.if.inputs.CONDITION[1]].opcode).toBe("data_listcontainsitem");
   expect(blocks[blocks.if.inputs.SUBSTACK[1]].opcode).toBe("control_wait_until");
   expect(blocks.gm.fields.TO[0]).toBe(POINTER);
@@ -127,10 +127,10 @@ test("bake places the recorded events by tick and rewires the project's inputs t
 test("bake stops at a second green flag and after maxSeconds", () => {
   const twoFlags = { ...recording, inputs: [...recording.inputs, { frame: 3, type: "greenFlag" as const }] };
   expect(bake(project(), twoFlags, { id: "1", budgetMs: 1000 }).ticks).toBe(4);
-  // 2 frames at 30 fps; at 15 fps the same 2 frames are 0.133 s.
+  // 2 frames at 30 fps; at 15 fps, 0.133 s is the same 2 frames, still 67 ms at 30 fps.
   expect(bake(project(), recording, { id: "1", budgetMs: 1000, maxSeconds: 2 / 30 }).ticks).toBe(3);
   const slow = bake(project(), { ...recording, framerate: 15 }, { id: "1", budgetMs: 1000, maxSeconds: 2 / 15 });
-  expect([slow.ticks, slow.recordedMs]).toEqual([3, 133]);
+  expect([slow.ticks, slow.recordedMs]).toEqual([3, 67]);
 });
 
 test("bake parks stop all inside a custom block, since stop this script would return to the caller", () => {

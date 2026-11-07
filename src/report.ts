@@ -176,7 +176,7 @@ export const renderReport = (results: SuiteResult[]): string => {
       (r.runtime.launcher === "headless" ? " (headless)" : "");
     const ids = [...new Set(projects.flatMap((r) => Object.keys(resultsOf(r))))];
     out.push(
-      "Projects: median ms to replay each recording in real time (recorded: how long it took when recorded; " +
+      "Projects: median ms to replay each recording (recorded: the replayed frames at 30 fps; " +
         "cut short: ticks reached)\n",
     );
     out.push(
@@ -199,7 +199,6 @@ export const renderReport = (results: SuiteResult[]): string => {
     out.push("");
     for (const r of projects) {
       const all = Object.values(resultsOf(r));
-      if (!all.length) continue;
       const done = all.filter((p) => !p.error && p.ticks === p.recorded_ticks);
       out.push(
         `${nameOf(r)}: ${done.length}/${all.length} replayed in full, ${

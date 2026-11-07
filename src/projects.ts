@@ -56,24 +56,28 @@ export interface BakedProject {
 }
 
 /** Each fetched project with its recording baked in (see bake.ts), in .cache/build/projects. */
-export const bakeProjects = (s: Selection): BakedProject[] => {
+export const bakeProjects = (s: Selection, log: (line: string) => void = () => {}): BakedProject[] => {
   const dir = path.join(BUILD_DIR, "projects");
   fs.mkdirSync(dir, { recursive: true });
   const out: BakedProject[] = [];
   for (const p of s.projects) {
     if (!fs.existsSync(projectFile(p.id))) continue;
-    const files = unzip(fs.readFileSync(projectFile(p.id)));
-    const recording: Recording = JSON.parse(fs.readFileSync(recordingFile(p.id), "utf8"));
-    const baked = bake(
-      JSON.parse(new TextDecoder().decode(files.get("project.json"))),
-      recording,
-      { id: p.id, maxSeconds: s.maxSeconds, budgetMs: s.budgetMs },
-    );
-    files.set("project.json", new TextEncoder().encode(JSON.stringify(baked.project)));
-    for (const [name, data] of baked.assets) files.set(name, data);
-    const sb3 = path.join(dir, `${p.id}.sb3`);
-    fs.writeFileSync(sb3, zip(files));
-    out.push({ id: p.id, title: p.title, sb3, ticks: baked.ticks, recordedMs: baked.recordedMs });
+    try {
+      const files = unzip(fs.readFileSync(projectFile(p.id)));
+      const recording: Recording = JSON.parse(fs.readFileSync(recordingFile(p.id), "utf8"));
+      const baked = bake(
+        JSON.parse(new TextDecoder().decode(files.get("project.json"))),
+        recording,
+        { id: p.id, maxSeconds: s.maxSeconds, budgetMs: s.budgetMs },
+      );
+      files.set("project.json", new TextEncoder().encode(JSON.stringify(baked.project)));
+      for (const [name, data] of baked.assets) files.set(name, data);
+      const sb3 = path.join(dir, `${p.id}.sb3`);
+      fs.writeFileSync(sb3, zip(files));
+      out.push({ id: p.id, title: p.title, sb3, ticks: baked.ticks, recordedMs: baked.recordedMs });
+    } catch (e) {
+      log(`  ${p.id} ${p.title}: couldn't bake: ${(e as Error).message}`);
+    }
   }
   return out;
 };

@@ -80,7 +80,7 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
   if (suite.id === "projects") {
     const selection = selectProjects(o.projects);
     if (!o.offline) await fetchProjects(selection.projects, (line) => o.log?.(`  ${line}`));
-    const projects = bakeProjects(selection);
+    const projects = bakeProjects(selection, (line) => o.log?.(line));
     if (!projects.length) {
       throw new Error("none of the projects are downloaded (bun run fetch-projects)");
     }

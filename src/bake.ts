@@ -127,10 +127,8 @@ type In = string | number | Ref | Blk | Existing | Primitive | Blk[];
 
 const BOOL_SLOTS: Record<string, string[]> = {
   control_if: ["CONDITION"],
-  control_if_else: ["CONDITION"],
   control_repeat_until: ["CONDITION"],
   control_wait_until: ["CONDITION"],
-  operator_and: ["OPERAND1", "OPERAND2"],
   operator_or: ["OPERAND1", "OPERAND2"],
   operator_not: ["OPERAND"],
 };
@@ -368,15 +366,6 @@ const replaceCommand = (blocks: Blocks, build: Builder, id: string, cmds: Blk[])
   deleteTree(blocks, id);
 };
 
-/** Whether a block is in a custom block's definition. */
-const inProcedure = (blocks: Blocks, id: string): boolean => {
-  let at = blocks[id];
-  for (const seen = new Set<string>(); at?.parent && !seen.has(at.parent); at = blocks[at.parent]) {
-    seen.add(at.parent);
-  }
-  return at?.opcode === "procedures_definition";
-};
-
 /** Whether running a script from `start` can wait a tick (custom blocks run with screen refresh too). */
 const scriptYields = (blocks: Blocks, start: string | null, seen = new Set<string>()): boolean => {
   for (let id = start; id && isBlock(blocks[id]); id = blocks[id].next) {
@@ -472,7 +461,6 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const mouseY = variable(stage, "replay mouse y");
   const mouseDown = variable(stage, "replay mouse down");
   const answer = variable(stage, "replay answer", "");
-  const values = list(stage, "replay values");
   const keys = list(stage, "replay keys");
   const answers = list(stage, "replay answers");
   const output = list(stage, "output");
@@ -536,6 +524,9 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
     }
   }
 
+  // One item per slider, there already for `replace item`.
+  const values = list(stage, "replay values", Array.from(setters.values(), () => ""));
+
   // ---- rewiring the project's input blocks ----
   const clickable: string[] = [];
   let stageClicks = false;
@@ -586,13 +577,11 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
         case "control_stop":
           if (block.fields.STOP_OPTION[0] === "all") {
             stopsAll = true;
-            // In a custom block, "stop this script" only returns to the caller, so the thread
-            // waits instead, until the stop-all scripts stop it later in the tick.
+            // The thread waits, rather than "stop this script" (which in a custom block only
+            // returns to the caller), until the stop-all scripts stop it later in the tick.
             replaceCommand(blocks, build, id, [
               b("event_broadcast", { BROADCAST_INPUT: "replay stop all" }),
-              inProcedure(blocks, id)
-                ? b("control_wait_until", { CONDITION: eq(1, 0) })
-                : stop("this script"),
+              b("control_wait_until", { CONDITION: eq(1, 0) }),
             ]);
           }
           break;
@@ -715,14 +704,13 @@ export const bake = (source: Project, recording: Recording, o: BakeOptions): Bak
   const evKind = list(pointer, "event kind", events.map((e) => e[1]));
   const evA = list(pointer, "event a", events.map((e) => e[2]));
   const evB = list(pointer, "event b", events.map((e) => e[3]));
-  // `replace item` needs the item to be there already.
-  stage.lists[values.id][1] = Array.from(setters.values(), () => "");
   const clickables = list(pointer, "clickable sprites", clickable);
   const allSprites = list(pointer, "sprites", sprites.map((s: Block) => s.name));
 
   const dayMs = 86_400_000;
-  // How long the replayed part took when it was recorded.
-  const recordedMs = Math.round(((endFrame - firstFrame) / (recording.framerate || 30)) * 1000);
+  // The replayed frames at 30 fps: how long a runtime that keeps up takes for a project that
+  // redraws every frame.
+  const recordedMs = Math.round(((endFrame - firstFrame) / 30) * 1000);
   const build = new Builder(pointer.blocks, broadcast);
   const on = (k: string, body: Blk[]) => ifThen(eq(kind, k), body);
   const send = (...name: In[]) => b("event_broadcast", { BROADCAST_INPUT: name.length > 1 ? join(...name) : name[0] });
