@@ -316,6 +316,9 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
   };
 
   const holdFrames = Math.ceil(det.DRAG_HOLD_MS / interval);
+  // The pointer starts at the middle of the stage (projects/REPLAY.md). Until it moves, scratch-vm
+  // would otherwise report it there but test touching it at the stage's top left corner.
+  vm.postIOData("mouse", { ...client(0, 0), canvasWidth: runtime.stageWidth, canvasHeight: runtime.stageHeight });
   // Waits for the GPU to finish what the frame queued (pen lines, the stage when drawn): left alone,
   // the work piles up and is paid for by whatever next reads back from the GPU (TurboWarp's renderer
   // picking the sprite under a click, say), or never.

@@ -77,7 +77,9 @@ const forkphorusState = (stage) =>
     effects: t.filters,
     // forkphorus keeps variables by name, so it can't have two of one name.
     variables: Object.entries(t.vars ?? {}),
-    lists: Object.entries(t.lists ?? {}),
+    // A list a block names that the project doesn't have ends up under "undefined", empty; scratch-vm
+    // makes no such list.
+    lists: Object.entries(t.lists ?? {}).filter(([name]) => name !== "undefined"),
   })));
 
 window.replay = async (scripts, id, budgetMs, withDrawing = false) => {

@@ -35,7 +35,8 @@ For frame `f` from 0 to `frames - 1`:
 1. The project's clock (`timer`, `days since 2000`, `current`, and the time `wait` and `glide` go by)
    reads `2025-01-01T12:00:00Z` plus `f` frame intervals (1000 / the recording's `framerate`). It
    doesn't move within a frame.
-2. The inputs recorded for frame `f` happen, in order, as they would from a person: key presses
+2. The inputs recorded for frame `f` happen, in order, as they would from a person (the pointer
+   starts at the middle of the stage, 0, 0, until the first one moves it): key presses
    start key hats and hold the key; a press on a sprite starts its click hats; a draggable sprite
    is dragged once the pointer moves more than 3 units, or after 400 ms held; the wheel starts the
    up/down arrow key hats.
