@@ -4,6 +4,7 @@ import fs from "fs";
 import http from "http";
 import path from "path";
 import { chromium } from "playwright-core";
+import { replayInPage } from "./replay-runner.mjs";
 
 process.stdout.on("error", () => process.exit(0));
 const [dir, file] = process.argv.slice(2);
@@ -128,25 +129,11 @@ const server = http.createServer((req, res) => {
   });
   await tab.goto(`http://127.0.0.1:${server.address().port}/__bench.html`);
   if (recording) {
-    // The replay checks its budget between frames, so a frame that doesn't end (compiled code
-    // spinning on the frozen clock, say) would keep it going past the recording's length. Give up
-    // on it 3 seconds after the budget, counted from the first frame (loading takes what it takes).
-    let stuck;
-    tab.on("console", (m) => {
-      if (m.text() !== "[REPLAY] frames start") return;
-      stuck = setTimeout(() => {
-        console.log(`[PROJECT] ${replayId} | error | a frame was still running at the end of the recording`);
-        console.log("[PROJECT] DONE");
-        process.exit(1);
-      }, budgetMs + 3_000);
-    });
-    const line = await tab.evaluate(
-      ([s, id, b, d]) => window.replay(s, id, b, d),
-      [pageScripts, replayId, budgetMs, process.env.BENCH_REPLAY_DRAW === "1"],
-    ).catch((e) => `${replayId} | error | ${String(e.message).split("\n")[0]}`);
-    clearTimeout(stuck);
-    console.log(`[PROJECT] ${line}`);
-    console.log("[PROJECT] DONE");
+    await replayInPage(tab, { recording, replayId, budgetMs }, () =>
+      tab.evaluate(
+        ([s, id, b, d]) => window.replay(s, id, b, d),
+        [pageScripts, replayId, budgetMs, process.env.BENCH_REPLAY_DRAW === "1"],
+      ));
     await browser.close();
     server.close();
     process.exit(0);

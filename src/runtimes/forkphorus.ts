@@ -112,6 +112,7 @@ export const forkphorus: Runtime = {
   headless: { command: (sb3) => command(liveDir!, sb3) },
   gui: {
     command: (sb3) => command(liveDir!, sb3),
+    replayHash: "forkphorus",
     replay: (sb3, r) => ({
       ...command(liveDir!, sb3),
       env: { ...(process.env as Record<string, string>), ...replayEnv(r) },

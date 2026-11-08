@@ -33,8 +33,8 @@ line.
 For frame `f` from 0 to `frames - 1`:
 
 1. The project's clock (`timer`, `days since 2000`, `current`, and the time `wait` and `glide` go by)
-   reads `2025-01-01T12:00:00Z` plus `f` frame intervals (1000 / the project's frame rate, 30 unless
-   the runtime runs the project at another). It doesn't move within a frame.
+   reads `2025-01-01T12:00:00Z` plus `f` frame intervals (1000 / the recording's `framerate`). It
+   doesn't move within a frame.
 2. The inputs recorded for frame `f` happen, in order, as they would from a person: key presses
    start key hats and hold the key; a press on a sprite starts its click hats; a draggable sprite
    is dragged once the pointer moves more than 3 units, or after 400 ms held; the wheel starts the
@@ -45,39 +45,53 @@ For frame `f` from 0 to `frames - 1`:
    number of passes than recorded counts as **drifted**.
 4. Warp mode (run without screen refresh) and waiting behave as on an infinitely fast machine:
    loops never stop for time, and a block waiting on time or a condition yields at once, since
-   nothing it waits on can change within a frame. A script that runs for 10 seconds without
-   finishing (it would never finish) fails the replay with an error.
+   nothing it waits on can change within a frame. A script that would never finish holds up its
+   frame until the replay is cut (below).
 5. Random numbers come from a seeded generator, the same sequence every run.
 6. Sound is off: nothing plays, and `play sound until done` doesn't wait.
 
 Frames run back to back, as fast as the runtime can, but a replay may take no longer than the
-recording did (the budget: `frames` at `framerate`, 10 seconds): once that much real time has passed
-it stops after the current frame and reports the frames it got through. A frame still running 3
-seconds after that is given up on, as an error, so no replay runs much past its recording's length.
+recording did (the budget: `frames` at `framerate`, 10 seconds). Once that much real time has passed
+since the first frame began (hashing included), it stops after the current frame and reports the
+frames it got through. So the GPU's time and the browser's take frames from a runtime too; it is
+still scored on script time, on frames another runtime also got through.
+
+A frame still running 3 seconds after the budget is **cut**: the replay stops there and reports the
+frames up to its last checkpoint, with the hash `unfinished`, and the next checkpoint (frame 1 if it
+had reached none) at its script time so far plus 3 seconds. That frame began before the budget ran
+out and has run ever since, so the runtime would have reached that checkpoint no sooner: compared
+there, it does no worse than it deserves, rather than being left out, which would score it only on
+the projects it can manage. A checkpoint past the frames reached is always such a bound.
 
 ## Output
 
 One line, then `DONE`:
 
-    <id> | <script ms> | <draw ms> | <wall ms> | <frames>/<recorded frames> | <drifted> | <hash> | <checkpoints>
+    <id> | <script ms> | <draw ms> | <frame ms> | <frames>/<recorded frames> | <drifted> | <hash> | <checkpoints>
     DONE
 
 or `<id> | error | <message>` then `DONE`. Native runtimes print each line on stdout prefixed with
 `[PROJECT] `.
 
-- **script ms**: the runtime's own work for the frames: handling their inputs (starting hats,
-  compiling) and stepping them. This is the speed the suite scores.
-- **draw ms**: drawing the stage (only when asked to, see below) and waiting, after every frame, for
-  the GPU to finish what the frame queued (pen lines and the like). Waiting every frame puts that
-  work in the frame that made it; otherwise it piles up and is paid for by whatever next reads back
-  from the GPU, or never.
-- **wall ms**: real time for all the frames, without hashing.
+- **frame ms**: real time for all the frames, from the first to the end of the last, without
+  hashing: everything it took to get through them. The budget counts this.
+- **script ms**: of that, the runtime's own work: handling the frames' inputs (starting hats,
+  compiling) and stepping them. This is the speed the suite scores. The rest is mostly the GPU,
+  which in the browser runners is SwiftShader (software, the same for every scratch-vm runtime) and
+  for a headless native runtime is nothing, so counting it would blur the runtimes' differences.
+- **draw ms**: of that, drawing the stage (only when asked to, see below) and waiting, after every
+  frame, for the GPU to finish what the frame queued (pen lines and the like). Waiting every frame
+  puts that work in the frame that made it; otherwise it piles up and is paid for by whatever next
+  reads back from the GPU, or never.
 - **checkpoints**: the script time so far at frames 1, 2, 3, 5, 8, 13, 20, 30, 50, 80, 120, 200, 300,
-  500 and 800 (those reached), and at the last frame, as `frame:ms` separated by commas. A runtime is
-  compared with another on the furthest checkpoint both reached, so on exactly the same frames.
+  500 and 800 (those reached), and at the last frame, as `frame:ms` separated by commas (and a cut
+  replay's bound). A runtime is compared with another on the furthest checkpoint both reached, so on
+  exactly the same frames; a reference's bound isn't used.
 - **hash**: 8 hex digits, a hash of the project's state (sprites, clones, variables and lists; a list
-  over 10,000 items by its length and 1000 items spread across it) every 30 frames and at the end. It only has to be stable within a runtime: it is compared with the same
-  runtime's earlier runs, and with other runtimes that share its implementation.
+  over 10,000 items by its length and 1000 items spread across it) every 30 frames and at the end.
+  It only has to be stable within a runtime: it is compared with the same runtime's earlier runs,
+  and with other runtimes whose replays hash the same way (the launcher's `replayHash`: every
+  scratch-vm runtime in the browser runner shares one).
 
 The stage needn't be drawn: nothing a project computes depends on drawing it (pen, touching and
 touching color work without it), and in software WebGL it costs more than the frames. The browser

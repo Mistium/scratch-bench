@@ -86,19 +86,27 @@ export interface ProjectResult {
   error: string | null;
   /** The project's title (results from before titles were recorded have none). */
   title: string | null;
-  /** Time spent stepping frames, without drawing: the runtime's speed on the project. */
+  /** Real time for the frames, back to back, without hashing: what the replay's budget counts. */
+  frame_ms: Summary | null;
+  /** Of that, stepping the frames (handling inputs and running scripts): the runtime's speed. */
   script_ms: Summary | null;
-  /** Time spent drawing the stage. */
+  /** Of that, drawing the stage and waiting for the GPU. */
   draw_ms: Summary | null;
-  /** Real time for the frames, back to back. */
+  /** Older results' real time. */
   wall_ms: Summary | null;
   /** Frames replayed, of the recording's; fewer when it ran out of time. */
   frames: number | null;
   recorded_frames: number | null;
   /** Frames that made a different number of passes than recorded: different work. */
   drifted: number | null;
-  /** The project's state through the replay; a runtime computing something else differs. */
+  /**
+   * The project's state through the replay, as 8 hex digits; a runtime computing something else
+   * differs. "mixed" when its runs disagreed, "unfinished" when a frame never ended; null when its
+   * runs stopped at different frames.
+   */
   hash: string | null;
+  /** Which code made the hash: only hashes of the same kind compare (null in older results). */
+  hash_kind: string | null;
   /** Script time so far at set frames (1, 2, 3, 5, 8, ... and the last reached). */
   checkpoints: Record<string, number> | null;
   /** Older results, from replays in real time. */

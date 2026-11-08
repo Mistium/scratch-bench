@@ -24,21 +24,27 @@ export interface ParityData {
 /** One recorded project replayed (see runtimes/chromium/index.html `replay`). */
 export type ProjectRun =
   | {
-    /** The runtime's own work: handling the inputs and stepping the frames. */
+    /**
+     * Frame time: all of the frames, back to back, without hashing (the runtime's work, the GPU
+     * finishing, what the browser does for it between frames). What the replay is measured by.
+     */
+    frame_ms: number;
+    /** Of that, the runtime's own work: handling the inputs and stepping the frames. */
     script_ms: number;
-    /** Drawing, and waiting for the GPU to finish each frame. */
+    /** Of that, drawing and waiting for the GPU to finish each frame. */
     draw_ms: number;
-    /** Real time the replay took, frames back to back. */
-    wall_ms: number;
     /** Frames replayed, of the recording's; fewer when it ran out of time. */
     frames: number;
     recorded_frames: number;
     /** Frames that made a different number of passes than recorded. */
     drifted: number;
-    /** A hash of the project's state through the replay: a runtime that computes something else differs. */
+    /**
+     * A hash of the project's state through the replay: a runtime that computes something else
+     * differs. "unfinished" when the replay was stopped in a frame that didn't end.
+     */
     hash: string;
     /**
-     * Script time so far at set frames (1, 2, 3, 5, 8, ... and the last), to compare runtimes on
+     * Frame time so far at set frames (1, 2, 3, 5, 8, ... and the last), to compare runtimes on
      * exactly the frames both got through.
      */
     checkpoints: Record<number, number>;
@@ -122,7 +128,7 @@ export const parity: Suite<ParityData> = {
 };
 
 const PROJECT_LINE =
-  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| ([0-9a-f]+) \| ([\d.:,]*)$/;
+  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| (\S+) \| ([\d.:,]*)$/;
 
 /**
  * Real projects, each replaying a recording of someone using it, frame by frame and the same in
@@ -145,7 +151,7 @@ export const projects: Suite<Record<string, ProjectRun>> = {
         out[m[1]] = {
           script_ms: Number(m[2]),
           draw_ms: Number(m[3]),
-          wall_ms: Number(m[4]),
+          frame_ms: Number(m[4]),
           frames: Number(m[5]),
           recorded_frames: Number(m[6]),
           drifted: Number(m[7]),

@@ -29,7 +29,7 @@ const USAGE = `usage: bun run bench [setup] [options]
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs of each project for the projects suite (default 3; the medians count)
   --timeout S             seconds before a run is killed (default 300; for the projects suite, each
-                          project's budget plus 2 minutes)
+                          project's budget plus a minute)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
   --no-variants           run each runtime in its default VM mode only (not compiler and interpreter, bytecode and not)
   --offline               don't use the network; use cached runtime downloads
@@ -280,6 +280,7 @@ const runSuite = async (
       base.runtime.display = measured.display;
       results[p.id] = {
         title: p.title,
+        hash_kind: launcher.replayHash ?? rt.id,
         recorded_frames: p.frames,
         ...(measured.results as object),
       };

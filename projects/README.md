@@ -35,19 +35,32 @@ Each replay reports:
 
 - **script time**, the runtime's own work for the frames (handling the inputs and stepping them), at
   checkpoints through the replay;
-- drawing time (the GPU finishing each frame's pen work and the like) and wall time;
+- frame time, the real time it took to get through the frames (what the budget counts), and of it
+  drawing time (the GPU finishing each frame's pen work and the like). These aren't scored: the
+  GPU is SwiftShader, software and the same for every scratch-vm runtime, and a headless native
+  runtime has none;
 - the frames it got through: a replay may take no longer than the recording did, 10 seconds, so a
-  runtime that can't keep up gets through fewer;
+  runtime that can't keep up gets through fewer. A frame still running 3 seconds after that is cut,
+  and the runtime is compared at the next checkpoint as if it had reached it then: a bound it would
+  only have done worse than, so a runtime too slow to finish a frame still counts as slow;
 - frames that made a different number of passes than recorded (**drifted**): those did different
   work, and a replay with more than 1% of them isn't scored;
 - a hash of the project's state every 30 frames and at the end. The same runtime should always give
-  the same hash, so a change between versions means it now computes something else; runtimes that
-  share an implementation (everything in the browser runner) can be compared with Scratch too.
+  the same hash, so a change between versions means it now computes something else; runtimes whose
+  replays hash the same way (everything in the browser runner) can be compared with Scratch too.
 
-A runtime's speed on a project is TurboWarp's script time over its own (Scratch's when TurboWarp has
-no replay of it) at the furthest checkpoint both reached, so they are always compared on exactly the
-same frames: 0.5 is half as fast as TurboWarp. The overall score counts each project's speed as much
-as two benchmarks.
+Each project is replayed 3 times (`--project-runs`) and the medians kept; if any of the 3 fails, so
+does the project.
+
+A runtime's speed on a project is TurboWarp's script time over its own at the furthest checkpoint
+both reached, in the same run, so they are always compared on exactly the same frames: 0.5 is half as
+fast as TurboWarp. There is no other reference: a project TurboWarp couldn't replay isn't scored.
+
+In the overall score each project counts as much as two benchmarks of average weight. Its value
+there is that speed times TurboWarp's own frames per millisecond of script time on it, so it is absolute like the
+benchmarks' and a change in TurboWarp shows in its score too. Projects a runtime failed to replay
+(an error, not slowness) are left out of its projects score; a runtime with none (one that can't
+replay) has no total in a run that scored projects, since it couldn't be compared with the others.
 
 Runtimes take part when their launcher can replay (`replay` in `src/runtimes/types.ts`): every
 scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), forkphorus

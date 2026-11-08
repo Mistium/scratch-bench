@@ -83,7 +83,18 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
     }
     const h = new Bun.CryptoHasher("sha256")
       .update(hashSource(dir))
-      .update(fs.readFileSync(path.join(ROOT, "runtimes/chromium/index.html")));
+      .update(fs.readFileSync(path.join(ROOT, "src/projects.ts")));
+    // The replay code is the suite as much as the recordings are.
+    for (
+      const file of [
+        "runtimes/replay.js",
+        "runtimes/chromium/index.html",
+        "runtimes/chromium-vm.mjs",
+        "runtimes/forkphorus.mjs",
+        "runtimes/replay-runner.mjs",
+        "runtimes/forkphorus/bench.html",
+      ]
+    ) h.update(fs.readFileSync(path.join(ROOT, file)));
     for (const p of projects) h.update(p.id);
     return {
       sb3: PROJECT_FILES,

@@ -59,7 +59,7 @@ test("projects.parse reads each replay's result line, or its error", () => {
     "324569477": {
       script_ms: 1726.5,
       draw_ms: 420.5,
-      wall_ms: 2930.6,
+      frame_ms: 2930.6,
       frames: 971,
       recorded_frames: 971,
       drifted: 0,
@@ -69,7 +69,7 @@ test("projects.parse reads each replay's result line, or its error", () => {
     "1201938491": {
       script_ms: 41012.3,
       draw_ms: 900.1,
-      wall_ms: 60012,
+      frame_ms: 60012,
       frames: 310,
       recorded_frames: 510,
       drifted: 2,

@@ -82,11 +82,17 @@ window.BenchReplay = (() => {
       queue.push(resolve);
       channel.port2.postMessage(null);
     }),
+    /**
+     * Tells the runner how far the replay has got, at each checkpoint, so that if a frame never ends
+     * it can still report the frames before it.
+     */
+    report: (r) =>
+      console.log(`[REPLAY] checkpoint ${r.frame} ${r.frameMs} ${r.scriptMs} ${r.drawMs} ${r.drifted}`),
     /** The result line (projects/REPLAY.md). */
     line: (id, r) => {
       const ms = (x) => Math.round(x * 10) / 10;
       const marks = Object.entries(r.checkpoints).map(([f, t]) => `${f}:${ms(t)}`).join(",");
-      return `${id} | ${ms(r.scriptMs)} | ${ms(r.drawMs)} | ${ms(r.wallMs)} | ${r.frames}/${r.recorded} | ${r.drifted} | ${fnv1a(r.hashes.join(""))} | ${marks}`;
+      return `${id} | ${ms(r.scriptMs)} | ${ms(r.drawMs)} | ${ms(r.frameMs)} | ${r.frames}/${r.recorded} | ${r.drifted} | ${fnv1a(r.hashes.join(""))} | ${marks}`;
     },
   };
 })();

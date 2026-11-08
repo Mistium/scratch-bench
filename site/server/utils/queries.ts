@@ -1,7 +1,8 @@
 import {
   type Medians,
   SCORE_VERSION,
-  projectSpeed,
+  PROJECT_REFERENCE,
+  projectValue,
   referenceFor,
   scoreRuntime,
   type WeightMode,
@@ -264,24 +265,27 @@ export const buildScores = (
   const weights = q.weights ?? "default";
   const entries = forHost(ds, host, q.separate);
   const perf = entries.filter(hasPerformance);
-  // Each run's project speeds by runtime, relative to that run's reference replays, scored with that
-  // run's benchmarks.
+  // Each run's project values by runtime, against that run's reference replays. A run counts as
+  // having projects when the reference has a comparable replay; there, a runtime without replays
+  // gets all nulls (so no total: it can't be compared with the others), and runs without (older
+  // runs, results from before replays had checkpoints) keep the benchmarks' total.
   const replaysByRun = new Map<string, Record<string, Record<string, ProjectResult>>>();
   for (const e of entries.filter(hasProjects)) {
     const run = replaysByRun.get(e.runId) ?? {};
     run[e.runtime.id] = e.projects!;
     replaysByRun.set(e.runId, run);
   }
-  const projectSpeeds = new Map<string, Medians>();
+  const projectValues = new Map<string, Record<string, Medians>>();
   for (const [runId, run] of replaysByRun) {
-    for (const [runtime, projects] of Object.entries(run)) {
-      projectSpeeds.set(
-        `${runId}|${runtime}`,
-        Object.fromEntries(
-          Object.entries(projects).map(([id, p]) => [id, projectSpeed(p, referenceFor(id, run))]),
-        ),
+    const ids = Object.keys(run[PROJECT_REFERENCE] ?? {}).filter((id) => referenceFor(id, run));
+    if (!ids.length) continue;
+    const byRuntime: Record<string, Medians> = {};
+    for (const runtime of new Set([...Object.keys(run), ...perf.filter((e) => e.runId === runId).map((e) => e.runtime.id)])) {
+      byRuntime[runtime] = Object.fromEntries(
+        ids.map((id) => [id, projectValue(run[runtime]?.[id], referenceFor(id, run))]),
       );
     }
+    projectValues.set(runId, byRuntime);
   }
   const timestamps = [...new Set(perf.map((e) => e.timestamp))]
     .filter((t) => (!q.from || t >= q.from) && (!q.to || t <= q.to))
@@ -304,7 +308,7 @@ export const buildScores = (
     const score = scoreRuntime(
       mediansOf(e),
       weights,
-      projectSpeeds.get(`${e.runId}|${e.runtime.id}`),
+      projectValues.get(e.runId)?.[e.runtime.id],
     );
     s.projects[i] = sig(score.projects?.score);
     s.total[i] = sig(score.total);

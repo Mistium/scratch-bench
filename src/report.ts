@@ -4,6 +4,7 @@ import {
   SCORE_VERSION,
   scoreRuntime,
 } from "../site/shared/scoring.ts";
+import { referenceFor, relativeSpeed } from "../site/shared/scoring.ts";
 import type { VariantInfo } from "./runtimes/types.ts";
 import type { Summary } from "./stats.ts";
 import { labelOf } from "./variants.ts";
@@ -163,21 +164,23 @@ export const renderReport = (results: SuiteResult[]): string => {
   if (projects.length) {
     type Replayed = {
       title?: string;
-      script_ms?: Summary;
+      hash_kind?: string;
+      frame_ms?: Summary;
       frames?: number;
       recorded_frames?: number;
       drifted?: number;
-      hash?: string;
+      hash?: string | null;
+      checkpoints?: Record<string, number>;
       error?: string;
     };
     const resultsOf = (r: SuiteResult) => (r.results as Record<string, Replayed>) ?? {};
     const nameOf = (r: SuiteResult) => labelOf(r.runtime.name, r.runtime.variant);
     const ids = [...new Set(projects.flatMap((r) => Object.keys(resultsOf(r))))];
-    const scratch = projects.find((r) => r.runtime.id === "scratch");
-    const cut = (p: Replayed) => p.frames! < p.recorded_frames!;
+    const byRuntime = Object.fromEntries(projects.map((r) => [r.runtime.id, resultsOf(r)]));
+    const scratch = byRuntime.scratch;
     out.push(
-      "Projects: median ms spent running scripts to replay each recording (frames reached when it ran " +
-        "out of time; ≠ computed something different from Scratch; * drifted from the recorded passes)\n",
+      "Projects: speed against TurboWarp on the same frames (frames reached when it ran out of time; " +
+        "≠ ended in a different state from Scratch; * drifted from the recorded passes)\n",
     );
     out.push(
       table(
@@ -188,24 +191,16 @@ export const renderReport = (results: SuiteResult[]): string => {
             const p = resultsOf(r)[id];
             if (!p) return "-";
             if (p.error) return "error";
-            const base = scratch && resultsOf(scratch)[id];
-            const marks = (base?.hash && !cut(p) && !cut(base) && base.hash !== p.hash ? "≠" : "") +
-              (p.drifted ? "*" : "");
-            return `${marks}${cut(p) ? `${p.frames}/${p.recorded_frames} frames` : num(p.script_ms!.median)}`;
+            const speed = relativeSpeed(p, referenceFor(id, byRuntime));
+            const base = scratch?.[id];
+            const differs = !!base?.hash && !!p.hash && base.hash_kind === p.hash_kind &&
+              base.hash !== p.hash;
+            const reached = p.frames! < p.recorded_frames! ? ` (${p.frames}/${p.recorded_frames})` : "";
+            return `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${speed === null ? "-" : `${speed.toFixed(2)}×`}${reached}`;
           }),
         ]),
       ),
     );
-    out.push("");
-    for (const r of projects) {
-      const all = Object.values(resultsOf(r));
-      const done = all.filter((p) => !p.error && !cut(p));
-      out.push(
-        `${nameOf(r)}: ${done.length}/${all.length} replayed in full, ${
-          num(done.reduce((n, p) => n + p.script_ms!.median, 0))
-        } ms of scripts in total, ${all.filter((p) => p.error).length} errors`,
-      );
-    }
     out.push("");
   }
 

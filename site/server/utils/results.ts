@@ -141,6 +141,7 @@ export const parseResult = (
       projects[id] = {
         error: typeof value.error === "string" ? value.error : null,
         title: typeof value.title === "string" ? value.title : null,
+        frame_ms: toSummary(value.frame_ms),
         script_ms: toSummary(value.script_ms),
         draw_ms: toSummary(value.draw_ms),
         wall_ms: toSummary(value.wall_ms),
@@ -148,6 +149,7 @@ export const parseResult = (
         recorded_frames: num(value.recorded_frames),
         drifted: num(value.drifted),
         hash: typeof value.hash === "string" ? value.hash : null,
+        hash_kind: typeof value.hash_kind === "string" ? value.hash_kind : null,
         checkpoints: isObject(value.checkpoints)
           ? Object.fromEntries(
             Object.entries(value.checkpoints).filter(([, ms]) => typeof ms === "number" && Number.isFinite(ms)),

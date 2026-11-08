@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectResult } from "#shared/types";
 import { projectTitle } from "#shared/projects";
-import { projectSpeed, referenceFor } from "#shared/scoring";
+import { PROJECT_REFERENCE, referenceFor, relativeSpeed } from "#shared/scoring";
 
 const titleOf = (id: string) =>
   runtimes.value.map((r) => r.projects[id]?.title).find(Boolean) ?? projectTitle(id);
@@ -22,31 +22,45 @@ const recordedFrames = (id: string) =>
 const cut = (p: ProjectResult) =>
   p.frames != null && p.recorded_frames != null && p.frames < p.recorded_frames;
 
-// Every runtime's replays, including hidden ones, to find each project's reference.
-const all = computed(() =>
-  Object.fromEntries((latest.value?.projects ?? []).map((r) => [r.id, r.projects]))
+// Every runtime's replays from the reference's run (each runtime's latest may be from another
+// night), including hidden runtimes, to find each project's reference.
+const referenceRun = computed(() =>
+  (latest.value?.projects ?? []).find((r) => r.id === PROJECT_REFERENCE)?.timestamp ?? null
 );
-const referenceName = (id: string) => {
-  const ref = referenceFor(id, all.value);
-  return (latest.value?.projects ?? []).find((r) => r.projects[id] === ref)?.name ?? null;
-};
-const speedOf = (id: string, p: ProjectResult | undefined) =>
-  projectSpeed(p, referenceFor(id, all.value));
+const all = computed(() =>
+  Object.fromEntries(
+    (latest.value?.projects ?? [])
+      .filter((r) => r.timestamp === referenceRun.value)
+      .map((r) => [r.id, r.projects]),
+  )
+);
+const referenceName = computed(() =>
+  (latest.value?.projects ?? []).find((r) => r.id === PROJECT_REFERENCE)?.name ?? PROJECT_REFERENCE
+);
+type Row = { timestamp: string; projects: Record<string, ProjectResult> };
+// Only replays from the same run as the reference's are compared with it: another night's ran on
+// another machine state, and maybe another version of the replay.
+const speedOf = (id: string, r: Row) =>
+  r.timestamp === referenceRun.value ? relativeSpeed(r.projects[id], referenceFor(id, all.value)) : null;
 
-const cell = (id: string, p: ProjectResult | undefined) => {
+const cell = (id: string, r: Row) => {
+  const p = r.projects[id];
   if (!p) return { text: "-", state: "missing" };
   if (p.error) return { text: "error", state: "error", title: p.error };
   if (!p.checkpoints) {
     // Older results, from replays in real time.
     return p.ms ? { text: fmtMs(p.ms.median), state: "ok", title: "real time (an older run)" } : { text: "-", state: "missing" };
   }
-  const speed = speedOf(id, p);
+  const speed = speedOf(id, r);
   const scratch = all.value.scratch?.[id];
-  const differs = !!scratch?.hash && !!p.hash && scratch.hash !== p.hash && !cut(p) && !cut(scratch);
+  // Hashes only compare between replays made by the same code, of the same frames.
+  const hashed = (x: ProjectResult | undefined) => !!x?.hash && /^[0-9a-f]{8}$/.test(x.hash);
+  const differs = r.timestamp === referenceRun.value && hashed(scratch) && hashed(p) &&
+    scratch!.hash_kind === p.hash_kind && scratch!.frames === p.frames && scratch!.hash !== p.hash;
   const notes = [
     `${fmtMs(p.script_ms?.median)} of scripts for ${p.frames} of ${p.recorded_frames} frames`,
-    `${fmtMs(p.draw_ms?.median)} drawing`,
-    speed !== null ? `compared with ${referenceName(id)} on the same frames` : "not comparable",
+    `${fmtMs(p.frame_ms?.median)} in all, ${fmtMs(p.draw_ms?.median)} of it drawing`,
+    speed !== null ? `compared with ${referenceName.value} on the same frames` : "not comparable",
     p.drifted ? `${p.drifted} frames made a different number of passes than recorded` : "",
     differs ? "ended in a different state from Scratch" : "",
   ].filter(Boolean);
@@ -60,8 +74,8 @@ const cell = (id: string, p: ProjectResult | undefined) => {
 // Each runtime's projects score: the geometric mean of its speeds, as the overall score counts it.
 const totals = computed(() =>
   runtimes.value.map((r) => {
-    const speeds = Object.entries(r.projects)
-      .map(([id, p]) => speedOf(id, p))
+    const speeds = Object.keys(r.projects)
+      .map((id) => speedOf(id, r))
       .filter((x): x is number => x !== null);
     return {
       id: r.id,
@@ -81,7 +95,7 @@ const totals = computed(() =>
       <p class="panel__subtitle">
         How fast each runtime runs the first 10 seconds of a recording of someone using each project, replayed frame by frame
         and the same in every runtime (like TurboWarp's pianola): its script time against TurboWarp's on exactly the same
-        frames, so 0.5× is half as fast. A runtime that can't get through the recording in its 10 seconds is compared on
+        frames, in the same run, so 0.5× is half as fast. A runtime that can't get through the recording in its 10 seconds is compared on
         the frames it did. ≠ ended in a different state from Scratch; * did different work from the recording.
       </p>
     </header>
@@ -104,9 +118,9 @@ const totals = computed(() =>
             <th scope="row">{{ titleOf(id) }}</th>
             <td class="projects__num">{{ recordedFrames(id) ?? "-" }}</td>
             <td v-for="r in runtimes" :key="r.id" class="projects__num"
-              :data-state="cell(id, r.projects[id]).state"
-              :title="cell(id, r.projects[id]).title ?? undefined">
-              {{ cell(id, r.projects[id]).text }}
+              :data-state="cell(id, r).state"
+              :title="cell(id, r).title ?? undefined">
+              {{ cell(id, r).text }}
             </td>
           </tr>
         </tbody>

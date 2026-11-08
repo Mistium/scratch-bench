@@ -3,6 +3,7 @@ import http from "http";
 import path from "path";
 import { createRequire } from "module";
 import { chromium } from "playwright-core";
+import { replayInPage } from "./replay-runner.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, "..");
@@ -139,25 +140,11 @@ const server = http.createServer((req, res) => {
   });
   const compiler = process.env.BENCH_COMPILER !== "0";
   if (recording) {
-    // The replay checks its budget between frames, so a frame that doesn't end (compiled code
-    // spinning on the frozen clock, say) would keep it going past the recording's length. Give up
-    // on it 3 seconds after the budget, counted from the first frame (loading takes what it takes).
-    let stuck;
-    page.on("console", (m) => {
-      if (m.text() !== "[REPLAY] frames start") return;
-      stuck = setTimeout(() => {
-        console.log(`[PROJECT] ${replayId} | error | a frame was still running at the end of the recording`);
-        console.log("[PROJECT] DONE");
-        process.exit(1);
-      }, budgetMs + 3_000);
-    });
-    const line = await page.evaluate(
-      ([k, s, c, id, b, d]) => window.replay(k, s, c, id, b, d),
-      [kind, scripts, compiler, replayId, budgetMs, process.env.BENCH_REPLAY_DRAW === "1"],
-    ).catch((e) => `${replayId} | error | ${String(e.message).split("\n")[0]}`);
-    clearTimeout(stuck);
-    console.log(`[PROJECT] ${line}`);
-    console.log("[PROJECT] DONE");
+    await replayInPage(page, { recording, replayId, budgetMs }, () =>
+      page.evaluate(
+        ([k, s, c, id, b, d]) => window.replay(k, s, c, id, b, d),
+        [kind, scripts, compiler, replayId, budgetMs, process.env.BENCH_REPLAY_DRAW === "1"],
+      ));
     await browser.close();
     server.close();
     process.exit(0);
