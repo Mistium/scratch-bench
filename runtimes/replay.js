@@ -50,6 +50,11 @@ window.BenchReplay = (() => {
     EPOCH: RealDate.UTC(2025, 0, 1, 12, 0, 0),
     /** State is hashed this often, and at the end. */
     CHECK_INTERVAL: 30,
+    /**
+     * The frames at which the script time so far is reported, so a runtime that didn't get through
+     * the whole recording can be compared with another on exactly the frames it did.
+     */
+    CHECKPOINTS: [1, 2, 3, 5, 8, 13, 20, 30, 50, 80, 120, 200, 300, 500, 800],
     /** Scaffolding (TurboWarp's player) starts dragging a sprite held this long without moving. */
     DRAG_HOLD_MS: 400,
     DRAG_DISTANCE: 3,
@@ -63,6 +68,16 @@ window.BenchReplay = (() => {
     seed,
     fnv1a,
     round: (n) => (typeof n === "number" ? Math.round(n * 1000) / 1000 : n),
+    /**
+     * A list's values for the state hash. A long list (an emulator's memory, say) is its length and
+     * 1000 items spread across it: enough to show a runtime computing something else, without
+     * copying millions of items every 30 frames.
+     */
+    listValues(list) {
+      if (list.length <= 10_000) return list.map(this.round);
+      const step = list.length / 1000;
+      return [list.length, ...Array.from({ length: 1000 }, (_, i) => this.round(list[Math.floor(i * step)]))];
+    },
     yieldToEventLoop: () => new Promise((resolve) => {
       queue.push(resolve);
       channel.port2.postMessage(null);
@@ -70,7 +85,8 @@ window.BenchReplay = (() => {
     /** The result line (projects/REPLAY.md). */
     line: (id, r) => {
       const ms = (x) => Math.round(x * 10) / 10;
-      return `${id} | ${ms(r.scriptMs)} | ${ms(r.drawMs)} | ${ms(r.wallMs)} | ${r.frames}/${r.recorded} | ${r.drifted} | ${fnv1a(r.hashes.join(""))}`;
+      const marks = Object.entries(r.checkpoints).map(([f, t]) => `${f}:${ms(t)}`).join(",");
+      return `${id} | ${ms(r.scriptMs)} | ${ms(r.drawMs)} | ${ms(r.wallMs)} | ${r.frames}/${r.recorded} | ${r.drifted} | ${fnv1a(r.hashes.join(""))} | ${marks}`;
     },
   };
 })();

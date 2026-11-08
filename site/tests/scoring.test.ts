@@ -6,6 +6,7 @@ import {
   MIN_COVERAGE,
   PROJECT_WEIGHT,
   projectSpeed,
+  referenceFor,
   ratioToBaseline,
   scoreRuntime,
 } from "../shared/scoring.ts";
@@ -134,15 +135,33 @@ describe("scoreRuntime with real projects", () => {
     expect(s.total).toBeCloseTo(100 ** (projectWeight / (categoryWeights + projectWeight)));
   });
 
-  it("scores a project by frames per millisecond of script time", () => {
-    expect(projectSpeed({ error: null, frames: 300, drifted: 0, script_ms: { median: 150 } })).toBe(2);
-    expect(projectSpeed({ error: "crashed", frames: 300, script_ms: { median: 150 } })).toBeNull();
-    expect(projectSpeed({ error: null, frames: 0, script_ms: { median: 150 } })).toBeNull();
+  const replay = (frames: number, checkpoints: Record<string, number>, extra = {}) => ({
+    error: null, frames, drifted: 0, checkpoints, ...extra,
   });
 
-  it("doesn't score a replay that did different work from the recording", () => {
-    expect(projectSpeed({ error: null, frames: 300, drifted: 3, script_ms: { median: 150 } })).toBe(2);
-    expect(projectSpeed({ error: null, frames: 300, drifted: 4, script_ms: { median: 150 } })).toBeNull();
+  it("compares a replay with the reference on the furthest frame both got to", () => {
+    const reference = replay(300, { 1: 2, 30: 40, 300: 500 });
+    // Twice as slow on the same 300 frames.
+    expect(projectSpeed(replay(300, { 1: 3, 30: 80, 300: 1000 }), reference)).toBe(0.5);
+    // Only got to frame 30 in its time: compared on those 30 frames.
+    expect(projectSpeed(replay(41, { 1: 10, 30: 160, 41: 300 }), reference)).toBe(0.25);
+    expect(projectSpeed(reference, reference)).toBe(1);
+  });
+
+  it("doesn't score a replay that failed, drifted or has nothing to compare", () => {
+    const reference = replay(300, { 1: 2, 300: 500 });
+    expect(projectSpeed({ error: "crashed", frames: 0, checkpoints: null }, reference)).toBeNull();
+    expect(projectSpeed(replay(300, { 300: 600 }, { drifted: 3 }), reference)).toBeCloseTo(500 / 600);
+    expect(projectSpeed(replay(300, { 300: 600 }, { drifted: 4 }), reference)).toBeNull();
+    expect(projectSpeed(replay(300, { 300: 600 }), undefined)).toBeNull();
+  });
+
+  it("uses TurboWarp's replay as the reference, or Scratch's without it", () => {
+    const tw = replay(300, { 300: 500 });
+    const scratch = replay(40, { 30: 900, 40: 1200 });
+    expect(referenceFor("1", { turbowarp: { 1: tw }, scratch: { 1: scratch } })).toBe(tw);
+    expect(referenceFor("1", { turbowarp: { 1: { ...tw, error: "x" } }, scratch: { 1: scratch } })).toBe(scratch);
+    expect(referenceFor("1", { mistwarp: { 1: tw } })).toBeUndefined();
   });
 
   it("leaves the total to the benchmarks for runs without projects", () => {

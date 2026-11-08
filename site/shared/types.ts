@@ -99,6 +99,8 @@ export interface ProjectResult {
   drifted: number | null;
   /** The project's state through the replay; a runtime computing something else differs. */
   hash: string | null;
+  /** Script time so far at set frames (1, 2, 3, 5, 8, ... and the last reached). */
+  checkpoints: Record<string, number> | null;
   /** Older results, from replays in real time. */
   ms?: Summary | null;
   recorded_ms?: number | null;

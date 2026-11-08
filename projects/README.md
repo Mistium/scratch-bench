@@ -2,17 +2,17 @@
 
 Real Scratch projects, each with a recording of a person using it, replayed as a benchmark (the
 `projects` suite). The projects and recordings come from TurboWarp's
-[pianola](https://github.com/TurboWarp/pianola) benchmark corpus; this suite uses 14 of them, for the
-first 300 frames of each:
+[pianola](https://github.com/TurboWarp/pianola) benchmark corpus; this suite uses 13 of them, the first
+10 seconds of each:
 
 - emulators: Linux on a RISC-V emulator, a Game Boy, a NES and a BBC Micro;
 - simulations: Navier Stokes, Particle Lenia, the Game of Life and flow-field pathfinding;
-- 3D and maths: a ray tracer, a 3D renderer and an OBJ importer;
+- 3D: a renderer and an OBJ importer;
 - games: Goopy, Bloons TD and Doom.
 
 `manifest.json` lists them: id, title, author, and the SHA-256 of the project file the recording was
-made with. `recordings/<id>.json` is the recorded play: how many passes the scheduler made in each
-frame, and the inputs with the frame they happened before.
+made with. `recordings/<id>.json` is the recorded play: its frame rate, how many passes the scheduler
+made in each frame, and the inputs with the frame they happened before.
 
 The project files aren't committed. The suite downloads them when it builds (not with `--offline`),
 or `bun run fetch-projects` does, from the pinned copies pianola keeps
@@ -28,19 +28,26 @@ bun run bench --suite projects
 and each frame applies the inputs recorded for it and makes exactly the passes over the threads the
 recording made, so every runtime does the same work. Time is a virtual clock that moves one frame per
 frame, random numbers are seeded, sound is off, and waiting or running without screen refresh behaves
-as on an infinitely fast machine.
+as on an infinitely fast machine. The stage isn't drawn (`BENCH_REPLAY_DRAW=1` draws it): nothing a
+project computes depends on that, and in software WebGL it costs more than the frames.
 
 Each replay reports:
 
-- **script time**, the time spent stepping frames without drawing: the speed, which the overall score
-  counts (each project as much as two benchmarks);
-- drawing time and wall time;
-- the frames it got through in its 30 seconds, of the recording's 300;
+- **script time**, the runtime's own work for the frames (handling the inputs and stepping them), at
+  checkpoints through the replay;
+- drawing time (the GPU finishing each frame's pen work and the like) and wall time;
+- the frames it got through: a replay may take no longer than the recording did, 10 seconds, so a
+  runtime that can't keep up gets through fewer;
 - frames that made a different number of passes than recorded (**drifted**): those did different
   work, and a replay with more than 1% of them isn't scored;
 - a hash of the project's state every 30 frames and at the end. The same runtime should always give
   the same hash, so a change between versions means it now computes something else; runtimes that
   share an implementation (everything in the browser runner) can be compared with Scratch too.
+
+A runtime's speed on a project is TurboWarp's script time over its own (Scratch's when TurboWarp has
+no replay of it) at the furthest checkpoint both reached, so they are always compared on exactly the
+same frames: 0.5 is half as fast as TurboWarp. The overall score counts each project's speed as much
+as two benchmarks.
 
 Runtimes take part when their launcher can replay (`replay` in `src/runtimes/types.ts`): every
 scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), and forkphorus

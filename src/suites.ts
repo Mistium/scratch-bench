@@ -24,9 +24,9 @@ export interface ParityData {
 /** One recorded project replayed (see runtimes/chromium/index.html `replay`). */
 export type ProjectRun =
   | {
-    /** Time spent running scripts: the speed. */
+    /** The runtime's own work: handling the inputs and stepping the frames. */
     script_ms: number;
-    /** Time spent drawing the stage. */
+    /** Drawing, and waiting for the GPU to finish each frame. */
     draw_ms: number;
     /** Real time the replay took, frames back to back. */
     wall_ms: number;
@@ -37,6 +37,11 @@ export type ProjectRun =
     drifted: number;
     /** A hash of the project's state through the replay: a runtime that computes something else differs. */
     hash: string;
+    /**
+     * Script time so far at set frames (1, 2, 3, 5, 8, ... and the last), to compare runtimes on
+     * exactly the frames both got through.
+     */
+    checkpoints: Record<number, number>;
   }
   | { error: string };
 
@@ -117,7 +122,7 @@ export const parity: Suite<ParityData> = {
 };
 
 const PROJECT_LINE =
-  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| ([0-9a-f]+)$/;
+  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| ([0-9a-f]+) \| ([\d.:,]*)$/;
 
 /**
  * Real projects, each replaying a recording of someone using it, frame by frame and the same in
@@ -144,6 +149,9 @@ export const projects: Suite<Record<string, ProjectRun>> = {
           recorded_frames: Number(m[6]),
           drifted: Number(m[7]),
           hash: m[8],
+          checkpoints: Object.fromEntries(
+            m[9].split(",").filter(Boolean).map((c) => c.split(":").map(Number) as [number, number]),
+          ),
         };
         continue;
       }

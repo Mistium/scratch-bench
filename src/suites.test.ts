@@ -51,8 +51,8 @@ test("parity.parse reads the older format without messages", () => {
 
 test("projects.parse reads each replay's result line, or its error", () => {
   expect(projects.parse([
-    "324569477 | 1726.5 | 420.5 | 2930.6 | 971/971 | 0 | f8c55320",
-    "1201938491 | 41012.3 | 900.1 | 60012 | 310/510 | 2 | 0a1b2c3d",
+    "324569477 | 1726.5 | 420.5 | 2930.6 | 971/971 | 0 | f8c55320 | 1:12.5,2:20,971:1726.5",
+    "1201938491 | 41012.3 | 900.1 | 60012 | 310/510 | 2 | 0a1b2c3d | 310:41012.3",
     "1274137785 | error | a frame ran for over a minute",
     "DONE",
   ])).toEqual({
@@ -64,6 +64,7 @@ test("projects.parse reads each replay's result line, or its error", () => {
       recorded_frames: 971,
       drifted: 0,
       hash: "f8c55320",
+      checkpoints: { 1: 12.5, 2: 20, 971: 1726.5 },
     },
     "1201938491": {
       script_ms: 41012.3,
@@ -73,6 +74,7 @@ test("projects.parse reads each replay's result line, or its error", () => {
       recorded_frames: 510,
       drifted: 2,
       hash: "0a1b2c3d",
+      checkpoints: { 310: 41012.3 },
     },
     "1274137785": { error: "a frame ran for over a minute" },
   });

@@ -63,7 +63,8 @@ window.start = async (scripts) => {
 
 const forkphorusState = (stage) => {
   const { round, fnv1a } = BenchReplay;
-  const values = (o) => Object.keys(o ?? {}).sort().map((k) => [k, Array.isArray(o[k]) ? o[k].map(round) : round(o[k])]);
+  const values = (o) =>
+    Object.keys(o ?? {}).sort().map((k) => [k, Array.isArray(o[k]) ? BenchReplay.listValues(o[k]) : round(o[k])]);
   const of = (t) => [
     t.name, !!t.isClone, round(t.scratchX), round(t.scratchY), round(t.direction), round(t.scale),
     t.currentCostumeIndex, t.visible, values(t.filters), values(t.vars), values(t.lists),
@@ -71,7 +72,7 @@ const forkphorusState = (stage) => {
   return fnv1a(JSON.stringify([of(stage), ...stage.children.map(of)]));
 };
 
-window.replay = async (scripts, id, budgetMs) => {
+window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
   const det = BenchReplay;
   det.install();
   const bench = window.__benchFrame = { passes: 0, target: 1 };
@@ -102,7 +103,8 @@ window.replay = async (scripts, id, budgetMs) => {
   const interval = 1000 / runtime.framerate;
   let drawMs = 0;
   const draw = stage.draw;
-  stage.draw = function () {
+  // The stage isn't drawn unless asked for, as in the scratch-vm runner.
+  stage.draw = !withDrawing ? () => {} : function () {
     const t = performance.now();
     draw.call(this);
     drawMs += performance.now() - t;
@@ -146,27 +148,40 @@ window.replay = async (scripts, id, budgetMs) => {
     }
   };
 
+  // Waits for the GPU to finish what the frame queued, as in the scratch-vm runner (the 2D-canvas
+  // renderer, a fallback, has nothing to wait for).
+  const gl = stage.renderer.gl;
+  const pixel = new Uint8Array(4);
+  const finishGpu = () => gl && gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
   const hashes = [];
+  const checkpoints = {};
   let frame = 0;
   let next = 0;
   let checkMs = 0;
   let scriptMs = 0;
   let drifted = 0;
   det.seed(1);
+  console.log("[REPLAY] frames start");
   const start = performance.now();
   while (frame < recording.frames && performance.now() - start - checkMs < budgetMs) {
+    // Script time is the runtime's own work for the frame (handling its inputs, stepping it);
+    // drawing and the GPU count apart.
+    const t = performance.now();
+    const before = drawMs;
     det.setTime(det.EPOCH + frame * interval);
     while (next < recording.inputs.length && recording.inputs[next].frame <= frame) {
       apply(recording.inputs[next++]);
     }
     bench.passes = 0;
     bench.target = recording.passes[frame] ?? 1;
-    const before = drawMs;
-    const t = performance.now();
     runtime._step();
-    scriptMs += performance.now() - t - (drawMs - before);
+    const stepped = performance.now();
+    scriptMs += stepped - t - (drawMs - before);
+    finishGpu();
+    drawMs += performance.now() - stepped;
     if (bench.passes !== bench.target) drifted++;
     frame++;
+    if (det.CHECKPOINTS.includes(frame)) checkpoints[frame] = scriptMs;
     if (frame % det.CHECK_INTERVAL === 0) {
       const c = performance.now();
       hashes.push(forkphorusState(stage));
@@ -176,6 +191,7 @@ window.replay = async (scripts, id, budgetMs) => {
   }
   const wallMs = performance.now() - start - checkMs;
   hashes.push(forkphorusState(stage));
-  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes });
+  checkpoints[frame] = scriptMs;
+  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });
 };
 </script>

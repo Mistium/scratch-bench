@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ProjectResult } from "#shared/types";
 import { projectTitle } from "#shared/projects";
+import { projectSpeed, referenceFor } from "#shared/scoring";
 
 const titleOf = (id: string) =>
   runtimes.value.map((r) => r.projects[id]?.title).find(Boolean) ?? projectTitle(id);
@@ -21,50 +22,52 @@ const recordedFrames = (id: string) =>
 const cut = (p: ProjectResult) =>
   p.frames != null && p.recorded_frames != null && p.frames < p.recorded_frames;
 
-/**
- * Script time for the whole recording: measured when the replay finished, scaled up from the
- * frames it reached when it ran out of time.
- */
-const scriptMs = (p: ProjectResult | undefined): number | null =>
-  p && !p.error && p.script_ms && p.frames && p.recorded_frames
-    ? p.script_ms.median * (p.recorded_frames / p.frames)
-    : null;
-
-// Scratch's own result, for spotting runtimes that computed something else.
-const scratch = computed(() => latest.value?.projects?.find((r) => r.id === "scratch"));
+// Every runtime's replays, including hidden ones, to find each project's reference.
+const all = computed(() =>
+  Object.fromEntries((latest.value?.projects ?? []).map((r) => [r.id, r.projects]))
+);
+const referenceName = (id: string) => {
+  const ref = referenceFor(id, all.value);
+  return (latest.value?.projects ?? []).find((r) => r.projects[id] === ref)?.name ?? null;
+};
+const speedOf = (id: string, p: ProjectResult | undefined) =>
+  projectSpeed(p, referenceFor(id, all.value));
 
 const cell = (id: string, p: ProjectResult | undefined) => {
   if (!p) return { text: "-", state: "missing" };
   if (p.error) return { text: "error", state: "error", title: p.error };
-  const script = scriptMs(p);
-  if (script === null) {
+  if (!p.checkpoints) {
     // Older results, from replays in real time.
     return p.ms ? { text: fmtMs(p.ms.median), state: "ok", title: "real time (an older run)" } : { text: "-", state: "missing" };
   }
-  const base = scratch.value?.projects[id];
-  const differs = !!base?.hash && !!p.hash && base.hash !== p.hash && !cut(p) && !cut(base);
+  const speed = speedOf(id, p);
+  const scratch = all.value.scratch?.[id];
+  const differs = !!scratch?.hash && !!p.hash && scratch.hash !== p.hash && !cut(p) && !cut(scratch);
   const notes = [
-    `${fmtMs(p.draw_ms?.median)} drawing, ${fmtMs(p.wall_ms?.median)} in all`,
-    cut(p) ? `ran out of time at frame ${p.frames} of ${p.recorded_frames}, so this is scaled up` : "",
+    `${fmtMs(p.script_ms?.median)} of scripts for ${p.frames} of ${p.recorded_frames} frames`,
+    `${fmtMs(p.draw_ms?.median)} drawing`,
+    speed !== null ? `compared with ${referenceName(id)} on the same frames` : "not comparable",
     p.drifted ? `${p.drifted} frames made a different number of passes than recorded` : "",
     differs ? "ended in a different state from Scratch" : "",
   ].filter(Boolean);
   return {
-    text: `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${cut(p) ? "~" : ""}${fmtMs(script)}`,
+    text: `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${speed !== null ? `${speed.toFixed(2)}×` : "-"}`,
     state: cut(p) ? "cut" : "ok",
     title: notes.join("; "),
   };
 };
 
+// Each runtime's projects score: the geometric mean of its speeds, as the overall score counts it.
 const totals = computed(() =>
   runtimes.value.map((r) => {
-    const all = Object.values(r.projects);
-    const timed = all.map(scriptMs).filter((x): x is number => x !== null);
+    const speeds = Object.entries(r.projects)
+      .map(([id, p]) => speedOf(id, p))
+      .filter((x): x is number => x !== null);
     return {
       id: r.id,
-      timed: timed.length,
-      total: all.length,
-      ms: timed.reduce((n, x) => n + x, 0),
+      counted: speeds.length,
+      total: Object.keys(r.projects).length,
+      score: speeds.length ? Math.exp(speeds.reduce((n, x) => n + Math.log(x), 0) / speeds.length) : null,
     };
   })
 );
@@ -76,10 +79,10 @@ const totals = computed(() =>
     <header class="panel__header">
       <h2 id="projects-title" class="panel__title">Real projects</h2>
       <p class="panel__subtitle">
-        Script time to replay the start of a recording of someone using each project, frame by frame and the same in every
-        runtime (like TurboWarp's pianola): the time spent running the project's scripts, without drawing. Lower is faster.
-        ~ scaled up from a replay that ran out of time; ≠ ended in a different state from Scratch; * did different work from
-        the recording. Hover a cell for drawing and total time.
+        How fast each runtime runs the first 10 seconds of a recording of someone using each project, replayed frame by frame
+        and the same in every runtime (like TurboWarp's pianola): its script time against TurboWarp's on exactly the same
+        frames, so 0.5× is half as fast. A runtime that can't get through the recording in its 10 seconds is compared on
+        the frames it did. ≠ ended in a different state from Scratch; * did different work from the recording.
       </p>
     </header>
 
@@ -109,10 +112,10 @@ const totals = computed(() =>
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">Total script time</th>
+            <th scope="row">Projects score</th>
             <td />
             <td v-for="t in totals" :key="t.id" class="projects__num">
-              <template v-if="t.timed">{{ fmtMs(t.ms) }}<template v-if="t.timed < t.total"> ({{ t.timed }}/{{ t.total }})</template></template>
+              <template v-if="t.score !== null">{{ t.score.toFixed(2) }}×<template v-if="t.counted < t.total"> ({{ t.counted }}/{{ t.total }})</template></template>
               <template v-else>-</template>
             </td>
           </tr>

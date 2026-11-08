@@ -181,7 +181,7 @@ const hashState = (vm) => {
       Object.keys(t.effects ?? {}).sort().map((k) => round(t.effects[k])),
       Object.keys(t.variables).sort().map((id) => {
         const v = t.variables[id];
-        return [v.name, Array.isArray(v.value) ? v.value.map(round) : round(v.value)];
+        return [v.name, Array.isArray(v.value) ? BenchReplay.listValues(v.value) : round(v.value)];
       }),
     ]);
   }
@@ -195,7 +195,7 @@ const hashState = (vm) => {
  * of passes than recorded (a runtime whose scheduler doesn't fit the patch); the hash covers the
  * state every 30 frames and at the end, so a runtime that computes something different shows up.
  */
-window.replay = async (kind, scripts, compiler, id, budgetMs) => {
+window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = false) => {
   const det = BenchReplay;
   det.install();
   const vm = await makeVM(kind, scripts, compiler, false);
@@ -219,7 +219,9 @@ window.replay = async (kind, scripts, compiler, id, budgetMs) => {
   const passesOf = patchSequencer(runtime, () => recording.passes[frame] ?? 1);
   let drawMs = 0;
   const draw = renderer.draw;
-  renderer.draw = function () {
+  // The stage isn't drawn unless asked for: nothing a project computes depends on it (pen, touching
+  // and touching color work without it), and drawing in software WebGL costs more than the frames.
+  renderer.draw = !draw ? draw : !withDrawing ? () => {} : function () {
     const t = performance.now();
     draw.call(this);
     drawMs += performance.now() - t;
@@ -291,14 +293,26 @@ window.replay = async (kind, scripts, compiler, id, budgetMs) => {
   };
 
   const holdFrames = Math.ceil(det.DRAG_HOLD_MS / interval);
+  // Waits for the GPU to finish what the frame queued (pen lines, the stage when drawn): left alone,
+  // the work piles up and is paid for by whatever next reads back from the GPU (TurboWarp's renderer
+  // picking the sprite under a click, say), or never.
+  const gl = renderer.gl;
+  const pixel = new Uint8Array(4);
+  const finishGpu = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
   const hashes = [];
+  const checkpoints = {};
   let checkMs = 0;
   let scriptMs = 0;
   let drifted = 0;
   let next = 0;
   det.seed(1);
+  console.log("[REPLAY] frames start");
   const start = performance.now();
   while (frame < recording.frames && performance.now() - start - checkMs < budgetMs) {
+    // Script time is the runtime's own work for the frame: handling its inputs (starting hats,
+    // compiling) and stepping it. Drawing and the GPU count apart, as drawing time.
+    const t = performance.now();
+    const before = drawMs;
     det.setTime(det.EPOCH + frame * interval);
     while (next < recording.inputs.length && recording.inputs[next].frame <= frame) {
       apply(recording.inputs[next++]);
@@ -307,14 +321,16 @@ window.replay = async (kind, scripts, compiler, id, budgetMs) => {
       startDrag(mouse.press.x, mouse.press.y);
       mouse.press = null;
     }
-    const before = drawMs;
-    const t = performance.now();
     runtime._step();
-    scriptMs += performance.now() - t - (drawMs - before);
+    const stepped = performance.now();
+    scriptMs += stepped - t - (drawMs - before);
     // Scratch's own VM leaves drawing to the editor, once per frame; TurboWarp's draws in _step.
-    if (drawMs === before) renderer.draw();
+    if (withDrawing && drawMs === before) renderer.draw();
+    finishGpu();
+    drawMs += performance.now() - stepped;
     if (passesOf() !== (recording.passes[frame] ?? 1)) drifted++;
     frame++;
+    if (det.CHECKPOINTS.includes(frame)) checkpoints[frame] = scriptMs;
     if (frame % det.CHECK_INTERVAL === 0) {
       const c = performance.now();
       hashes.push(hashState(vm));
@@ -322,11 +338,9 @@ window.replay = async (kind, scripts, compiler, id, budgetMs) => {
     }
     await det.yieldToEventLoop();
   }
-  // Wait for the GPU to finish what was queued, so it counts too.
-  const gl = renderer.gl;
-  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
   const wallMs = performance.now() - start - checkMs;
   hashes.push(hashState(vm));
-  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes });
+  checkpoints[frame] = scriptMs;
+  return det.line(id, { scriptMs, drawMs, wallMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });
 };
 </script>

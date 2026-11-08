@@ -48,12 +48,6 @@
   "sha256": "91cc0ae71417b7cff76729c08a8b87a49dac940c5aa5abb99ae2cee6652a28d4"
  },
  {
-  "id": "868607896",
-  "title": "Ray Tracing",
-  "author": "3TheHedgehogCoder3",
-  "sha256": "a347792e176e9547b16b60d4a4c0b6a58a1be7360dacf1eb297583ce705fd47e"
- },
- {
   "id": "1137819146",
   "title": "Pretty fast 3D renderer v2.5.9",
   "author": "extremely_random_guy",

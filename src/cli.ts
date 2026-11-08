@@ -7,7 +7,6 @@ import { type DisplayKind, startDisplay } from "./display.ts";
 import { hostInfo, repoInfo } from "./hostinfo.ts";
 import { measureSuite, statsOf } from "./measure-suite.ts";
 import { RESULTS_DIR } from "./paths.ts";
-import { BUDGET_MS } from "./projects.ts";
 import { renderReport, type SuiteResult } from "./report.ts";
 import { selectRuntimes } from "./runtimes/index.ts";
 import type { Runtime, SetupInfo, Variant } from "./runtimes/types.ts";
@@ -266,7 +265,7 @@ const runSuite = async (
     const results: Record<string, unknown> = {};
     for (const p of built.projects) {
       log(`  ${p.id} ${p.title}`);
-      const replay = { recording: p.recording, id: p.id, budgetMs: BUDGET_MS };
+      const replay = { recording: p.recording, id: p.id, budgetMs: p.durationMs };
       const replaying = {
         ...launcher,
         command: (sb3: string, v?: Variant | null) => launcher.replay!(sb3, replay, v),

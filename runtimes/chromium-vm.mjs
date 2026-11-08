@@ -139,15 +139,21 @@ const server = http.createServer((req, res) => {
   });
   const compiler = process.env.BENCH_COMPILER !== "0";
   if (recording) {
-    // The replay checks its budget between frames, so only a frame that never ends gets this far.
-    const stuck = setTimeout(() => {
-      console.log(`[PROJECT] ${replayId} | error | a frame ran for over a minute`);
-      console.log("[PROJECT] DONE");
-      process.exit(1);
-    }, budgetMs + 60_000);
+    // The replay checks its budget between frames, so a frame that doesn't end (compiled code
+    // spinning on the frozen clock, say) would keep it going past the recording's length. Give up
+    // on it 3 seconds after the budget, counted from the first frame (loading takes what it takes).
+    let stuck;
+    page.on("console", (m) => {
+      if (m.text() !== "[REPLAY] frames start") return;
+      stuck = setTimeout(() => {
+        console.log(`[PROJECT] ${replayId} | error | a frame was still running at the end of the recording`);
+        console.log("[PROJECT] DONE");
+        process.exit(1);
+      }, budgetMs + 3_000);
+    });
     const line = await page.evaluate(
-      ([k, s, c, id, b]) => window.replay(k, s, c, id, b),
-      [kind, scripts, compiler, replayId, budgetMs],
+      ([k, s, c, id, b, d]) => window.replay(k, s, c, id, b, d),
+      [kind, scripts, compiler, replayId, budgetMs, process.env.BENCH_REPLAY_DRAW === "1"],
     ).catch((e) => `${replayId} | error | ${String(e.message).split("\n")[0]}`);
     clearTimeout(stuck);
     console.log(`[PROJECT] ${line}`);

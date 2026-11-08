@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILD_DIR, ROOT } from "./paths.ts";
 import { fetchProjects } from "./fetch-projects.ts";
-import { BUDGET_MS, manifest, PROJECT_FILES, type ReplayProject, replayProjects } from "./projects.ts";
+import { manifest, PROJECT_FILES, type ReplayProject, replayProjects } from "./projects.ts";
 import { type Suite, suiteSourceDir } from "./suites.ts";
 
 export interface Built {
@@ -89,9 +89,9 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
       sb3: PROJECT_FILES,
       hash: h.digest("hex").slice(0, 16),
       projects,
-      // The replay stops itself at the budget; this leaves time to load, and the runner gives up on
-      // a frame that never ends a minute after the budget.
-      timeoutMs: BUDGET_MS + 120_000,
+      // A replay stops itself at its recording's length, and the runner gives up on a frame that
+      // doesn't end soon after; this leaves time to start the runtime and load the project.
+      timeoutMs: Math.max(...projects.map((p) => p.durationMs)) + 60_000,
     };
   }
   const sb3 = path.join(BUILD_DIR, `${suite.id}.sb3`);

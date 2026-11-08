@@ -148,6 +148,11 @@ export const parseResult = (
         recorded_frames: num(value.recorded_frames),
         drifted: num(value.drifted),
         hash: typeof value.hash === "string" ? value.hash : null,
+        checkpoints: isObject(value.checkpoints)
+          ? Object.fromEntries(
+            Object.entries(value.checkpoints).filter(([, ms]) => typeof ms === "number" && Number.isFinite(ms)),
+          ) as Record<string, number>
+          : null,
         ms: toSummary(value.ms),
         recorded_ms: num(value.recorded_ms),
         ticks: num(value.ticks),

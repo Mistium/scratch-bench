@@ -33,21 +33,44 @@ export interface RuntimeScore {
   projects: CategoryScore | null;
 }
 
-/**
- * A replayed project's speed: frames per millisecond spent running scripts. Every runtime replays
- * the same passes, so it compares the same work; a replay that drifted on more than 1% of its frames
- * did different work, and isn't scored.
- */
-export const projectSpeed = (p: {
+/** The runtimes whose replays the others are compared with, in order of preference. */
+export const PROJECT_REFERENCES = ["turbowarp", "scratch"];
+
+type Replayed = {
   error?: string | null;
   frames?: number | null;
   drifted?: number | null;
-  script_ms?: { median: number } | null;
-} | undefined): number | null =>
-  p && !p.error && p.frames && p.script_ms && p.script_ms.median > 0 &&
-    (p.drifted ?? 0) <= p.frames * 0.01
-    ? p.frames / p.script_ms.median
-    : null;
+  checkpoints?: Record<string, number> | null;
+} | undefined;
+
+/** A replay that finished without error and did the recorded work (drifted on at most 1% of frames). */
+const comparable = (p: Replayed): p is NonNullable<Replayed> =>
+  !!p && !p.error && !!p.frames && !!p.checkpoints && (p.drifted ?? 0) <= p.frames * 0.01;
+
+/**
+ * A replayed project's speed, relative to a reference runtime's replay of it: the reference's script
+ * time over the replay's, at the furthest checkpoint both got to, so they are compared on exactly
+ * the same frames (a runtime that couldn't get through the recording in its time is compared on
+ * the frames it did). 1 for the reference itself; null when either can't be compared.
+ */
+export const projectSpeed = (p: Replayed, reference: Replayed): number | null => {
+  if (!comparable(p) || !comparable(reference)) return null;
+  const mine = p.checkpoints ?? {};
+  const theirs = reference.checkpoints ?? {};
+  const shared = Object.keys(mine)
+    .filter((f) => (theirs[f] ?? 0) > 0 && (mine[f] ?? 0) > 0)
+    .sort((x, y) => Number(y) - Number(x))[0];
+  return shared === undefined ? null : theirs[shared]! / mine[shared]!;
+};
+
+/** The reference replay for a project among a run's results: the first of PROJECT_REFERENCES with one. */
+export const referenceFor = <T extends Replayed>(id: string, runtimes: Record<string, Record<string, T>>): T | undefined => {
+  for (const ref of PROJECT_REFERENCES) {
+    const p = runtimes[ref]?.[id];
+    if (comparable(p)) return p;
+  }
+  return undefined;
+};
 
 /** The share of the total an average benchmark has: its category's weight over its category's size. */
 const averageBenchmarkWeight = (mode: WeightMode): number =>
@@ -73,8 +96,8 @@ export const categoryWeight = (id: CategoryId, mode: WeightMode): number =>
   mode === "equal" ? 1 : CATEGORIES[id].weight;
 
 /**
- * `projects` maps each project the run replayed to its speed (see projectSpeed), null where it
- * failed. Without it the total is the benchmarks' alone, as for runs from before the projects suite.
+ * `projects` maps each project the run replayed to its speed relative to the reference runtime (see
+ * projectSpeed), null where it can't be compared. Without it the total is the benchmarks' alone, as for runs from before the projects suite.
  */
 export const scoreRuntime = (
   runtime: Medians,

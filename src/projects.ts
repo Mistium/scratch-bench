@@ -15,8 +15,6 @@ export interface ProjectEntry {
   sha256: string;
 }
 
-/** Real time each replay may take before it stops and reports how far it got. */
-export const BUDGET_MS = 30_000;
 
 export const manifest = (): ProjectEntry[] =>
   JSON.parse(fs.readFileSync(path.join(PROJECTS_DIR, "manifest.json"), "utf8"));
@@ -31,16 +29,25 @@ export interface ReplayProject {
   sb3: string;
   recording: string;
   frames: number;
+  /**
+   * How long the recording lasts, frames at its frame rate: a replay may take no longer, and
+   * reports how far it got.
+   */
+  durationMs: number;
 }
 
 /** The downloaded projects, each with its recording. */
 export const replayProjects = (): ReplayProject[] =>
   manifest()
     .filter((p) => fs.existsSync(projectFile(p)))
-    .map((p) => ({
-      id: p.id,
-      title: p.title,
-      sb3: projectFile(p),
-      recording: recordingFile(p.id),
-      frames: JSON.parse(fs.readFileSync(recordingFile(p.id), "utf8")).frames,
-    }));
+    .map((p) => {
+      const recording = JSON.parse(fs.readFileSync(recordingFile(p.id), "utf8"));
+      return {
+        id: p.id,
+        title: p.title,
+        sb3: projectFile(p),
+        recording: recordingFile(p.id),
+        frames: recording.frames,
+        durationMs: Math.round((recording.frames / (recording.framerate || 30)) * 1000),
+      };
+    });

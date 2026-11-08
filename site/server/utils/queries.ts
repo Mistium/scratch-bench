@@ -2,6 +2,7 @@ import {
   type Medians,
   SCORE_VERSION,
   projectSpeed,
+  referenceFor,
   scoreRuntime,
   type WeightMode,
 } from "../../shared/scoring.ts";
@@ -12,6 +13,7 @@ import type {
   Latest,
   LatestRuntime,
   Meta,
+  ProjectResult,
   RuntimeInfo,
   ScoreHistory,
   ScoreSeries,
@@ -262,13 +264,24 @@ export const buildScores = (
   const weights = q.weights ?? "default";
   const entries = forHost(ds, host, q.separate);
   const perf = entries.filter(hasPerformance);
-  // Each run's project speeds by runtime, scored with that run's benchmarks.
-  const projectSpeeds = new Map<string, Medians>();
+  // Each run's project speeds by runtime, relative to that run's reference replays, scored with that
+  // run's benchmarks.
+  const replaysByRun = new Map<string, Record<string, Record<string, ProjectResult>>>();
   for (const e of entries.filter(hasProjects)) {
-    projectSpeeds.set(
-      `${e.runId}|${e.runtime.id}`,
-      Object.fromEntries(Object.entries(e.projects!).map(([id, p]) => [id, projectSpeed(p)])),
-    );
+    const run = replaysByRun.get(e.runId) ?? {};
+    run[e.runtime.id] = e.projects!;
+    replaysByRun.set(e.runId, run);
+  }
+  const projectSpeeds = new Map<string, Medians>();
+  for (const [runId, run] of replaysByRun) {
+    for (const [runtime, projects] of Object.entries(run)) {
+      projectSpeeds.set(
+        `${runId}|${runtime}`,
+        Object.fromEntries(
+          Object.entries(projects).map(([id, p]) => [id, projectSpeed(p, referenceFor(id, run))]),
+        ),
+      );
+    }
   }
   const timestamps = [...new Set(perf.map((e) => e.timestamp))]
     .filter((t) => (!q.from || t >= q.from) && (!q.to || t <= q.to))
