@@ -203,7 +203,8 @@ type Result = Omit<SuiteResult, "timestamp" | "host" | "repo">;
 
 /**
  * The projects suite. Every runtime replays every project once a round, the runtimes in turn for
- * each project (in an order that moves along a place each round), for as many rounds as runs:
+ * each project (in an order that moves along a place each project and each round), for as many
+ * rounds as runs:
  * whatever else the machine is doing then falls on all of them about alike, rather than on
  * whichever runtime's turn it was, and on the reference above all. Each runtime's results are
  * written after every round, so a run stopped early keeps the rounds it finished.
@@ -241,9 +242,10 @@ const runProjects = async (
       ...(combineReplays(plan.replays[p.id] ?? [], round, plan.errors[p.id]) as object),
     }]));
   for (let round = 1; round <= rounds; round++) {
-    for (const p of projects) {
+    for (const [n, p] of projects.entries()) {
       log(`projects round ${round}/${rounds}: ${p.id} ${p.title}`);
-      const order = [...plans.slice((round - 1) % plans.length), ...plans.slice(0, (round - 1) % plans.length)];
+      const shift = (round - 1 + n) % plans.length;
+      const order = [...plans.slice(shift), ...plans.slice(0, shift)];
       for (const plan of order) {
         const replay = { recording: p.recording, id: p.id, budgetMs: p.durationMs };
         const replaying = {
@@ -253,7 +255,7 @@ const runProjects = async (
         const measured = await measureSuite(suite, replaying, p.sb3, {
           ...plan.options,
           runs: 1,
-          log: (line) => log(`  ${plan.label}: ${line.trim()}`),
+          log: (line) => log(`  ${plan.label}: ${line.trim().replace(/^run 1\/1: /, "")}`),
         });
         plan.base.runs.push(...measured.runs);
         plan.base.runtime.display = measured.display;
@@ -269,7 +271,9 @@ const runProjects = async (
       save(plan.base);
     }
   }
-  return [...done, ...plans.map((p) => p.base)];
+  // In the runtimes' order, as the other suites report them.
+  const order = (r: Result) => runtimes.findIndex((rt) => rt.id === r.runtime.id);
+  return [...done, ...plans.map((p) => p.base)].sort((a, b) => order(a) - order(b));
 };
 
 type Prepared = {

@@ -49,14 +49,6 @@ window.BenchReplay = (() => {
     for (let i = 0; i < 16; i++) random();
   };
 
-  const fnv1a = (str) => {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0).toString(16).padStart(8, "0");
-  };
 
   // setTimeout on the virtual clock, while the frames run (virtualTimers): scratch-vm ends a
   // `say for secs` on a timeout, which in real time would end after however many frames fit in it.
@@ -113,8 +105,6 @@ window.BenchReplay = (() => {
 
   return {
     EPOCH: RealDate.UTC(2025, 0, 1, 12, 0, 0),
-    /** State is hashed this often, and at the end. */
-    CHECK_INTERVAL: 30,
     /**
      * The frames at which the script time so far is reported, so a runtime that didn't get through
      * the whole recording can be compared with another on exactly the frames it did.
@@ -162,18 +152,6 @@ window.BenchReplay = (() => {
       return ran;
     },
     seed,
-    fnv1a,
-    round: (n) => (typeof n === "number" ? Math.round(n * 1000) / 1000 : n),
-    /**
-     * A list's values for the state hash. A long list (an emulator's memory, say) is its length and
-     * 1000 items spread across it: enough to show a runtime computing something else, without
-     * copying millions of items every 30 frames.
-     */
-    listValues(list) {
-      if (list.length <= 10_000) return list.map(this.round);
-      const step = list.length / 1000;
-      return [list.length, ...Array.from({ length: 1000 }, (_, i) => this.round(list[Math.floor(i * step)]))];
-    },
     yieldToEventLoop: () => new Promise((resolve) => {
       queue.push(resolve);
       channel.port2.postMessage(null);

@@ -61,7 +61,7 @@ const cell = (id: string, r: Row) => {
     speed !== null && differs !== null
       ? `compared with ${referenceName.value} on frames 1-${agreed!.through}, the last before its state stopped agreeing (at frame ${differs})`
       : differs !== null
-      ? `its state didn't agree with ${referenceName.value}'s from frame ${differs}, so it isn't compared`
+      ? `its state stopped agreeing with ${referenceName.value}'s at frame ${differs}, too soon to compare it`
       : speed !== null
       ? Object.keys(p.checkpoints ?? {}).some((f) => Number(f) > (p.frames ?? 0))
         ? `cut in frame ${(p.frames ?? 0) + 1}, which didn't end: compared with ${referenceName.value} as if it had finished it then, which it would only have done later`

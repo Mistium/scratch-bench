@@ -111,7 +111,9 @@ export const replayCommand = (
 export const canReplay = (bin: string): boolean => {
   try {
     const built = fs.readFileSync(bin);
-    return built.includes("--replay-budget") && built.includes("{next}:{script}");
+    // A cut replay's bound ({next}:{script}) and the state at each checkpoint (BENCH_STATE_DUMP)
+    // came in that order; a build with neither or only the first can't be compared.
+    return built.includes("--replay-budget") && built.includes("{next}:{script}") && built.includes("BENCH_STATE_DUMP");
   } catch {
     return false;
   }

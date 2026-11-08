@@ -50,7 +50,8 @@ For frame `f` from 0 to `frames - 1`:
    loops never stop for time, and a block waiting on time or a condition yields at once, since
    nothing it waits on can change within a frame. (TurboWarp's compiled code yields a warp-mode
    wait after 100 checks rather than at once, and the same way from a warp-mode `repeat until`
-   whose condition reads the timer, which would otherwise never end on a clock that doesn't move.) A script that would never finish holds up its frame until the
+   whose condition reads the timer, which would otherwise never end on a clock that doesn't move.) A
+   script that would never finish holds up its frame until the
    replay is cut (below).
 5. Random numbers come from a seeded generator, the same sequence every run.
 6. Sound is off: nothing plays, and `play sound until done` doesn't wait.
@@ -112,7 +113,8 @@ So that a runtime that gets faster by computing something else shows up, the sta
 checkpoint is hashed the same way in every runtime, and a runtime is compared with the reference
 (TurboWarp) only on the frames up to the last checkpoint at which their states agreed, and only if
 that is frame 30 or later (the first frames are mostly a project setting up). A runtime whose state
-agreed for fewer isn't compared on that project: whatever it was doing, it wasn't running it. Every runner hashes the state this way (`BenchReplay.stateHash` in `runtimes/replay.js`, and
+agreed for fewer isn't compared on that project: whatever it was doing, it wasn't running it. Every
+runner hashes the state this way (`BenchReplay.stateHash` in `runtimes/replay.js`, and
 `hashState` in oscratchl's `src/io/replay.osl`; `src/replay-state.test.ts` pins an example):
 
 - Each target (the stage, every sprite and every clone) is a **record**: fields joined by U+001F.
@@ -133,6 +135,12 @@ agreed for fewer isn't compared on that project: whatever it was doing, it wasn'
   `false` are themselves.
 - The stage's record comes first, then the others sorted by their text, by code point, all joined by
   U+001D. The state is FNV-1a (32-bit) of that text's UTF-8 bytes, as 8 lowercase hex digits.
+
+`state-check/` has a project to check a runtime's state against: replayed with its
+`recording.json` (`--replay-id 1`), it sets numbers past 1e21, -0, NaN and Infinity, text that
+looks like a number and text that isn't ASCII, two variables of one name, a list of 10,001 items, a
+clone, an effect, a size its costume clamps, a direction and a rotation style. Every checkpoint's
+state is `bcd18494` in TurboWarp, Scratch and oscratchl.
 
 For their random numbers to agree, a runtime's `pick random` and the like draw on the same
 generator, seeded the same way, in the order the project asks for them (sfc32, as `BenchReplay`

@@ -214,8 +214,9 @@ const hashState = (vm) =>
  * Replays /recording.json against /project.sb3 and returns the result line:
  *   <id> | <script ms> | <draw ms> | <frame ms> | <frames>/<recorded frames> | <drifted> | <hash> | <checkpoints>
  * Script time is the time spent stepping, without drawing; drifted frames made a different number
- * of passes than recorded (a runtime whose scheduler doesn't fit the patch); the hash covers the
- * state every 30 frames and at the end, so a runtime that computes something different shows up.
+ * of passes than recorded (a runtime whose scheduler doesn't fit the patch); each checkpoint
+ * carries the project's state (projects/REPLAY.md, "State"), so a runtime that computes something
+ * different shows up.
  */
 window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = false) => {
   const det = BenchReplay;
