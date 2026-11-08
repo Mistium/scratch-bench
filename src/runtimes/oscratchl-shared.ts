@@ -103,10 +103,15 @@ export const replayCommand = (
   projectLine: /^\[PROJECT\] (.*)$/,
 });
 
-/** Whether a build of oscratchl has replay mode (older ones would take the flags for the project). */
+/**
+ * Whether a build of oscratchl has replay mode as projects/REPLAY.md now describes it (older ones
+ * would take the flags for the project; the first builds with it kept time in seconds and failed a
+ * cut replay rather than bounding it). The bound's template is only in builds since.
+ */
 export const canReplay = (bin: string): boolean => {
   try {
-    return fs.readFileSync(bin).includes("--replay-budget");
+    const built = fs.readFileSync(bin);
+    return built.includes("--replay-budget") && built.includes("{next}:{script}");
   } catch {
     return false;
   }

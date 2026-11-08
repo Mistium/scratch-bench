@@ -170,9 +170,13 @@ describe("scoreRuntime with real projects", () => {
 
   it("compares a replay cut in a frame that didn't end through its bound, and never a reference's", () => {
     const reference = replay(300, { 1: 2, 30: 40, 300: 500 });
-    // Cut in its first frame, at least 3 s in: at most 500/3000 of the reference's speed over the
-    // reference's 300 frames.
-    expect(relativeSpeed(replay(0, { 1: 3000 }), reference)).toBeCloseTo(500 / 3000);
+    // Cut in its first frame, at least 3 s in: at most 2/3000 of the reference's speed on that
+    // frame.
+    expect(relativeSpeed(replay(0, { 1: 3000 }), reference)).toBeCloseTo(2 / 3000);
+    // However long the reference took in all, a runtime that never finished a frame stays below it.
+    expect(relativeSpeed(replay(0, { 1: 3000 }), replay(300, { 1: 2, 300: 6000 }))).toBeCloseTo(2 / 3000);
+    // Compared at the reference's first checkpoint from the frame it was cut in.
+    expect(relativeSpeed(replay(127, { 1: 4, 128: 3300 }), replay(300, { 1: 2, 200: 300, 300: 500 }))).toBeCloseTo(300 / 3300);
     // Cut in frame 128 after doing frames 1-127 at half speed: the bound holds at frame 300.
     expect(relativeSpeed(replay(127, { 1: 4, 30: 80, 128: 3300 }), reference)).toBeCloseTo(500 / 3300);
     // The reference stopped (out of time) before that frame: compared on the frames both did.
@@ -206,6 +210,10 @@ describe("scoreRuntime with real projects", () => {
     // Its speed on the others, whatever the size of the ones left out.
     expect(s.projects?.score).toBeCloseTo(5);
     expect(s.total).not.toBeNull();
+    // The three it was compared on count as three projects, not five.
+    const weight = PROJECT_WEIGHT * 3 * (CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0) / BENCHMARKS.length);
+    const benchmarks = CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0);
+    expect(s.total).toBeCloseTo(5 ** (weight / (benchmarks + weight)));
     const none = scoreRuntime(all(1), "default", { speeds: { a: null, b: null }, scale: 10 });
     expect(none.projects?.score).toBeNull();
     expect(none.total).toBeNull();

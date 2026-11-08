@@ -41,6 +41,12 @@ window.BenchReplay = (() => {
     return (h >>> 0).toString(16).padStart(8, "0");
   };
 
+  // setTimeout on the virtual clock, while the frames run (virtualTimers): scratch-vm ends a
+  // `say for secs` on a timeout, which in real time would end after however many frames fit in it.
+  const timers = new Map();
+  let nextTimer = 1 << 30;
+  let real = null;
+
   // MessageChannel instead of setTimeout(0), which gets clamped to 4 ms after a few nested calls.
   const channel = new MessageChannel();
   const queue = [];
@@ -65,6 +71,37 @@ window.BenchReplay = (() => {
       virtualNow = this.EPOCH;
     },
     setTime: (ms) => (virtualNow = ms),
+    /** Puts setTimeout on the virtual clock (true), or back (false). */
+    virtualTimers(on) {
+      if (on && !real) {
+        real = { setTimeout: window.setTimeout, clearTimeout: window.clearTimeout };
+        window.setTimeout = (fn, delay = 0, ...args) => {
+          const id = nextTimer++;
+          timers.set(id, { fn, args, start: virtualNow, delay: Math.max(0, Number(delay) || 0) });
+          return id;
+        };
+        window.clearTimeout = (id) => {
+          if (!timers.delete(id)) real.clearTimeout.call(window, id);
+        };
+      } else if (!on && real) {
+        Object.assign(window, real);
+        real = null;
+      }
+    },
+    /**
+     * Runs the virtual timeouts that are due: those for which the time since they were set is no
+     * longer less than their delay, the test scratch-vm's own timers make. Returns whether any ran.
+     */
+    runTimers() {
+      let ran = false;
+      for (const [id, t] of [...timers]) {
+        if (virtualNow - t.start < t.delay) continue;
+        timers.delete(id);
+        typeof t.fn === "function" ? t.fn(...t.args) : null;
+        ran = true;
+      }
+      return ran;
+    },
     seed,
     fnv1a,
     round: (n) => (typeof n === "number" ? Math.round(n * 1000) / 1000 : n),

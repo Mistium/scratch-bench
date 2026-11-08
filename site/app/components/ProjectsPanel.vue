@@ -60,7 +60,10 @@ const cell = (id: string, r: Row) => {
   const notes = [
     `${fmtMs(p.script_ms?.median)} of scripts for ${p.frames} of ${p.recorded_frames} frames`,
     `${fmtMs(p.frame_ms?.median)} in all, ${fmtMs(p.draw_ms?.median)} of it drawing`,
-    speed !== null ? `compared with ${referenceName.value} on the same frames` : "not comparable",
+    speed !== null
+      ? Object.keys(p.checkpoints ?? {}).some((f) => Number(f) > (p.frames ?? 0))
+        ? `cut in frame ${(p.frames ?? 0) + 1}, which didn't end: compared with ${referenceName.value} as if it had finished it then, which it would only have done later`
+        : `compared with ${referenceName.value} on the same frames` : "not comparable",
     p.drifted ? `${p.drifted} frames made a different number of passes than recorded` : "",
     differs ? "ended in a different state from Scratch" : "",
   ].filter(Boolean);

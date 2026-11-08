@@ -25,9 +25,25 @@ export const previousValue = (
 };
 
 /**
- * The latest total in a runtime's series, from a run of the same kind as the latest run (one that
- * scored real projects, or one that didn't): totals of different kinds aren't on one scale, so a
- * runtime without one of the latest kind has none, rather than an older one of the other kind.
+ * The kind of total the site shows: with real projects once any run has scored them (a later run
+ * that didn't, say one re-running a single runtime, doesn't switch it back), otherwise without.
+ */
+export const currentKind = (scores: ScoreHistory | null | undefined): boolean =>
+  (scores?.projectRuns ?? []).includes(true);
+
+/** A runtime's totals, with those from runs of the other kind than currentKind left out (null). */
+export const totalsOfCurrentKind = (
+  scores: ScoreHistory | null | undefined,
+  series: (number | null)[] | undefined,
+): (number | null)[] => {
+  const kind = currentKind(scores);
+  return (series ?? []).map((v, i) => ((scores?.projectRuns?.[i] ?? false) === kind ? v : null));
+};
+
+/**
+ * The latest total in a runtime's series of the current kind (with projects or without): totals
+ * of different kinds aren't on one scale, so a runtime without one of that kind has none, rather
+ * than an older one of the other kind.
  */
 export const lastTotal = (
   scores: ScoreHistory | null | undefined,
@@ -43,12 +59,7 @@ export const previousTotal = (
 const totalsOfKind = (
   scores: ScoreHistory | null | undefined,
   series: (number | null)[] | undefined,
-): number[] => {
-  if (!scores || !series) return [];
-  const kinds = scores.projectRuns ?? [];
-  const kind = kinds.at(-1) ?? false;
-  return series.filter((v, i): v is number => v != null && (kinds[i] ?? false) === kind);
-};
+): number[] => totalsOfCurrentKind(scores, series).filter((v): v is number => v != null);
 
 export const useRankedRuntimeIds = (
   host: Ref<string>,

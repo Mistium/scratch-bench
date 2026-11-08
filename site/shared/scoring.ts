@@ -71,15 +71,19 @@ const marksOf = (p: NonNullable<Replayed>) => {
  * How fast a replay ran against the reference's, on exactly the same frames: the reference's script
  * time over its own at the furthest checkpoint both reached (a runtime that couldn't get through the
  * recording in its time is compared on the frames it did). A replay cut in a frame the reference
- * got past is compared at the reference's furthest frame, through its bound. 1 for the reference
+ * got past is compared through its bound at the reference's first checkpoint from that frame on:
+ * the bound holds at every later one too, but the first gives the tightest comparison, and a later
+ * one could score a runtime that never finished a frame above the reference. 1 for the reference
  * itself; null when either can't be compared.
  */
 export const relativeSpeed = (p: Replayed, reference: Replayed): number | null => {
   if (!comparable(p) || !comparable(reference)) return null;
   const theirs = marksOf(reference).real;
   const mine = marksOf(p);
-  const [furthest, theirTime] = theirs[0] ?? [];
-  if (mine.bound && furthest !== undefined && furthest >= mine.bound[0]) return theirTime! / mine.bound[1];
+  if (mine.bound) {
+    const after = theirs.filter(([f]) => f >= mine.bound![0]).at(-1);
+    if (after) return after[1] / mine.bound[1];
+  }
   const at = new Map(theirs);
   const shared = mine.real.find(([f]) => at.has(f));
   return shared ? at.get(shared[0])! / shared[1] : null;
@@ -195,7 +199,9 @@ export const scoreRuntime = (
   if (projectScore) {
     parts.push({
       score: projectScore.score,
-      weight: PROJECT_WEIGHT * ids.length * averageBenchmarkWeight(mode),
+      // Each project it was compared on counts as PROJECT_WEIGHT benchmarks: one it was compared on
+      // alone doesn't stand in for the ones it wasn't.
+      weight: PROJECT_WEIGHT * projectScore.counted * averageBenchmarkWeight(mode),
     });
   }
   const complete = parts.every((p) => p.score !== null);

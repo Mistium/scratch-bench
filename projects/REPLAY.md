@@ -46,9 +46,10 @@ For frame `f` from 0 to `frames - 1`:
    before, after or every few passes; the browser runner counts and stops passes where every one of
    them checks for a redraw, before each pass.)
 4. Warp mode (run without screen refresh) and waiting behave as on an infinitely fast machine:
-   loops never stop for time (not even TurboWarp's compiled loops that check the time to stay
-   responsive), and a block waiting on time or a condition yields at once, since nothing it waits
-   on can change within a frame. A script that would never finish holds up its frame until the
+   loops never stop for time, and a block waiting on time or a condition yields at once, since
+   nothing it waits on can change within a frame. (TurboWarp's compiled code yields a warp-mode
+   wait after 100 checks rather than at once, and the same way from a warp-mode `repeat until`
+   whose condition reads the timer, which would otherwise never end on a clock that doesn't move.) A script that would never finish holds up its frame until the
    replay is cut (below).
 5. Random numbers come from a seeded generator, the same sequence every run.
 6. Sound is off: nothing plays, and `play sound until done` doesn't wait.

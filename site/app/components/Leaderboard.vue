@@ -12,7 +12,7 @@ const replaying = ref(false);
 const replaySeries = computed(() =>
   Object.entries(scores.value?.runtimes ?? {})
     .filter(([id]) => shown(id))
-    .map(([id, s]) => ({ id, name: nameOf(id), values: s.total }))
+    .map(([id, s]) => ({ id, name: nameOf(id), values: totalsOfCurrentKind(scores.value, s.total) }))
 );
 
 const rows = computed(() => {
