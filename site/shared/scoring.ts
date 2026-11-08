@@ -233,9 +233,12 @@ export const scoreRuntime = (
   if (projectScore) {
     parts.push({
       score: projectScore.score,
-      // Each project it was compared on counts as PROJECT_WEIGHT benchmarks: one it was compared on
-      // alone doesn't stand in for the ones it wasn't.
-      weight: PROJECT_WEIGHT * projectScore.counted * averageBenchmarkWeight(mode),
+      // The same weight for every runtime, however many projects it was compared on: totals are
+      // only comparable between runtimes weighted alike, since the projects' frames per
+      // millisecond and the benchmarks' operations per millisecond are on very different scales.
+      // (Weighted by its own count, a runtime compared on fewer projects would lean less on the
+      // projects' small numbers and come out ahead for it.)
+      weight: PROJECT_WEIGHT * ids.length * averageBenchmarkWeight(mode),
     });
   }
   const complete = parts.every((p) => p.score !== null);

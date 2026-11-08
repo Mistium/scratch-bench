@@ -234,10 +234,11 @@ describe("scoreRuntime with real projects", () => {
     // Its speed on the others, whatever the size of the ones left out.
     expect(s.projects?.score).toBeCloseTo(5);
     expect(s.total).not.toBeNull();
-    // The three it was compared on count as three projects, not five.
-    const weight = PROJECT_WEIGHT * 3 * (CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0) / BENCHMARKS.length);
-    const benchmarks = CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0);
-    expect(s.total).toBeCloseTo(5 ** (weight / (benchmarks + weight)));
+    // Every runtime's projects weigh the same, however many it was compared on: compared on fewer,
+    // a runtime as fast on those as another mustn't come out ahead of it.
+    const all5 = scoreRuntime(all(1000), "default", { speeds: { a: 0.5, b: 0.5, c: 0.5, d: 0.5, e: 0.5 }, scale: 10 });
+    const some = scoreRuntime(all(1000), "default", { speeds: { a: 0.5, b: null, c: null, d: 0.5, e: 0.5 }, scale: 10 });
+    expect(some.total).toBeCloseTo(all5.total!);
     const none = scoreRuntime(all(1), "default", { speeds: { a: null, b: null }, scale: 10 });
     expect(none.projects?.score).toBeNull();
     expect(none.total).toBeNull();
