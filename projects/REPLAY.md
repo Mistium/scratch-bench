@@ -70,7 +70,9 @@ plus 3 seconds. That frame began before the budget ran out and has run ever sinc
 would have finished it, or any later frame, no sooner. Compared at a frame the reference got to
 past it, the runtime does no worse than it deserves, rather than being left out, which would score
 it only on the projects it can manage. A checkpoint past the frames reached is always a bound, and a
-reference's bound is never used.
+reference's bound is never used. (A frame held up by drawing rather than its scripts, the GPU
+taking over 3 seconds, would have its bound counted as script time; in practice frames that long
+are scripts.)
 
 The runners need to know where each frame begins for that: the browser runners log
 `[REPLAY] frame <f> <script ms> <draw ms> <drifted>` before each frame and `[REPLAY] frames end`
