@@ -5,8 +5,8 @@ import {
   type Medians,
   MIN_COVERAGE,
   PROJECT_WEIGHT,
-  projectValue,
   referenceFor,
+  referenceRate,
   relativeSpeed,
   ratioToBaseline,
   scoreRuntime,
@@ -128,8 +128,9 @@ describe("scoreRuntime with real projects", () => {
   const categoryWeights = CATEGORY_IDS.reduce((n, id) => n + CATEGORIES[id].weight, 0);
 
   it("counts each project as much as two benchmarks of average weight", () => {
-    const projects = { a: 100, b: 100, c: 100 };
+    const projects = { speeds: { a: 2, b: 2, c: 2 }, scale: 50 };
     const s = scoreRuntime(all(1), "default", projects);
+    // Twice TurboWarp's speed, which ran 50 frames per ms.
     expect(s.projects?.score).toBeCloseTo(100);
     // Benchmarks at 1 and projects at 100: the total is 100 to the projects' share of the weight.
     const projectWeight = PROJECT_WEIGHT * 3 * (categoryWeights / BENCHMARKS.length);
@@ -160,31 +161,27 @@ describe("scoreRuntime with real projects", () => {
     expect(relativeSpeed(replay(2, { 2: 10 }), replay(300, { 1: 2, 300: 500 }))).toBeNull();
   });
 
-  it("values a replay in frames per millisecond, through the reference's own speed", () => {
-    const reference = replay(300, { 1: 2, 30: 40, 300: 500 });
-    // The reference ran 300 frames in 500 ms.
-    expect(projectValue(reference, reference)).toBeCloseTo(300 / 500);
-    expect(projectValue(replay(300, { 300: 1000 }), reference)).toBeCloseTo(0.5 * 300 / 500);
-    // Cut off at frame 30, at a quarter of the reference's speed there: a quarter of its value.
-    expect(projectValue(replay(41, { 30: 160, 41: 300 }), reference)).toBeCloseTo(0.25 * 300 / 500);
-    // A faster reference raises every runtime's value with it, so the reference's own changes show.
-    const faster = replay(300, { 1: 1, 30: 20, 300: 250 });
-    expect(projectValue(replay(300, { 300: 1000 }), faster)).toBeCloseTo(projectValue(replay(300, { 300: 1000 }), reference)!);
-    expect(projectValue(faster, faster)).toBeCloseTo(2 * projectValue(reference, reference)!);
-    expect(projectValue(replay(300, { 300: 1000 }), undefined)).toBeNull();
+  it("measures the reference's own speed in frames per millisecond of script time", () => {
+    expect(referenceRate(replay(300, { 1: 2, 30: 40, 300: 500 }))).toBeCloseTo(300 / 500);
+    // Cut at frame 30: as far as it really got, not its bound.
+    expect(referenceRate(replay(30, { 1: 2, 30: 40, 31: 3040 }))).toBeCloseTo(30 / 40);
+    expect(referenceRate(replay(300, { 300: 500 }, { error: "x" }))).toBeNull();
   });
 
-  it("compares a replay cut in a frame that didn't end on its bound, and never a reference's", () => {
+  it("compares a replay cut in a frame that didn't end through its bound, and never a reference's", () => {
     const reference = replay(300, { 1: 2, 30: 40, 300: 500 });
-    // Stuck in its first frame for at least 3 s: at most 2/3000 of the reference's speed.
-    expect(relativeSpeed(replay(0, { 1: 3000 }, { hash: "unfinished" }), reference)).toBeCloseTo(2 / 3000);
-    // Reached frame 30, then stuck: its bound at the next checkpoint, 50, has no match, so frame 30.
-    expect(relativeSpeed(replay(30, { 1: 4, 30: 80, 50: 3080 }), reference)).toBe(0.5);
+    // Cut in its first frame, at least 3 s in: at most 500/3000 of the reference's speed over the
+    // reference's 300 frames.
+    expect(relativeSpeed(replay(0, { 1: 3000 }), reference)).toBeCloseTo(500 / 3000);
+    // Cut in frame 128 after doing frames 1-127 at half speed: the bound holds at frame 300.
+    expect(relativeSpeed(replay(127, { 1: 4, 30: 80, 128: 3300 }), reference)).toBeCloseTo(500 / 3300);
+    // The reference stopped (out of time) before that frame: compared on the frames both did.
+    const short = replay(100, { 1: 2, 30: 40, 100: 200 });
+    expect(relativeSpeed(replay(127, { 1: 4, 30: 80, 128: 3300 }), short)).toBe(0.5);
     // A reference cut at frame 30 is only compared where it really got to.
-    const cut = replay(30, { 1: 2, 30: 40, 50: 3040 });
+    const cut = replay(30, { 1: 2, 30: 40, 31: 3040 });
     expect(relativeSpeed(replay(300, { 1: 4, 30: 80, 50: 100, 300: 1000 }), cut)).toBe(0.5);
-    expect(projectValue(cut, cut)).toBeCloseTo(30 / 40);
-    // One stuck in its first frame has nothing real to be compared with.
+    // One cut in its first frame has nothing real to be compared with.
     expect(referenceFor("1", { turbowarp: { 1: replay(0, { 1: 3000 }) } })).toBeUndefined();
   });
 
@@ -203,12 +200,13 @@ describe("scoreRuntime with real projects", () => {
   });
 
   it("leaves out projects it couldn't compare, and has no total with none", () => {
-    const s = scoreRuntime(all(1), "default", { a: 5, b: null, c: null, d: 5, e: 5 });
+    const s = scoreRuntime(all(1), "default", { speeds: { a: 0.5, b: null, c: null, d: 0.5, e: 0.5 }, scale: 10 });
     expect(s.projects?.coverage).toBeCloseTo(0.6);
     expect(s.projects?.counted).toBe(3);
+    // Its speed on the others, whatever the size of the ones left out.
     expect(s.projects?.score).toBeCloseTo(5);
     expect(s.total).not.toBeNull();
-    const none = scoreRuntime(all(1), "default", { a: null, b: null });
+    const none = scoreRuntime(all(1), "default", { speeds: { a: null, b: null }, scale: 10 });
     expect(none.projects?.score).toBeNull();
     expect(none.total).toBeNull();
   });

@@ -37,3 +37,19 @@ test("combineReplays marks a hash that changed between runs, and fails on a fail
     .toEqual({ error: "timed out after 70s" });
   expect(combineReplays([], 3, "timed out after 70s")).toEqual({ error: "timed out after 70s" });
 });
+
+test("combineReplays keeps a bound only when every run was cut, where all of them hold", () => {
+  const cut = (frames: number, real: Record<number, number>, bound: number) =>
+    run(frames, { ...real, [frames + 1]: bound }, { hash: "unfinished" });
+  const r = combineReplays([
+    cut(127, { 1: 2, 120: 220 }, 3220),
+    cut(130, { 1: 2, 120: 230 }, 3230),
+    cut(127, { 1: 3, 120: 225 }, 3225),
+  ], 3) as any;
+  expect(r.frames).toBe(127);
+  expect(r.checkpoints).toEqual({ 1: 2, 120: 225, 131: 3225 });
+  expect(r.hash).toBeNull();
+  // One run finished: no bound, and the cut run's bound isn't taken for a real checkpoint.
+  const mixed = combineReplays([cut(127, { 1: 2, 120: 220 }, 3220), run(300, { 1: 2, 120: 230, 128: 240, 300: 600 })], 2) as any;
+  expect(mixed.checkpoints).toEqual({ 1: 2, 120: 225 });
+});

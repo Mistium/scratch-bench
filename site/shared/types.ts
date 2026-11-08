@@ -162,7 +162,7 @@ export interface History {
 export interface ScoreSeries {
   total: (number | null)[];
   categories: Record<string, (number | null)[]>;
-  /** The real-projects score (ticks per ms of script time), where a run has projects. */
+  /** The real-projects score (frames per ms of script time), where a run has projects. */
   projects: (number | null)[];
   coverage: (number | null)[];
 }
@@ -172,6 +172,11 @@ export interface ScoreHistory {
   weights: "default" | "equal";
   scoreVersion: number;
   timestamps: string[];
+  /**
+   * Whether each run scored real projects. Its totals then count them, so they aren't on the same
+   * scale as a run's that didn't: compare totals only between runs alike (see lastTotal).
+   */
+  projectRuns: boolean[];
   suiteHashes: (string | null)[];
   runtimes: Record<string, ScoreSeries>;
 }

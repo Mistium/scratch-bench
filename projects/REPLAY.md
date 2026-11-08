@@ -42,13 +42,19 @@ For frame `f` from 0 to `frames - 1`:
 3. Exactly `passes[f]` passes run, whether or not the frame asks for a redraw, so every runtime does
    the same work (the recordings come from TurboWarp, and runtimes stop for redraws differently).
    Only a frame with no running threads left can stop sooner. A frame that makes a different
-   number of passes than recorded counts as **drifted**.
+   number of passes than recorded counts as **drifted**. (The scratch-vm forks check the time
+   before, after or every few passes; the browser runner counts and stops passes where every one of
+   them checks for a redraw, before each pass.)
 4. Warp mode (run without screen refresh) and waiting behave as on an infinitely fast machine:
-   loops never stop for time, and a block waiting on time or a condition yields at once, since
-   nothing it waits on can change within a frame. A script that would never finish holds up its
-   frame until the replay is cut (below).
+   loops never stop for time (not even TurboWarp's compiled loops that check the time to stay
+   responsive), and a block waiting on time or a condition yields at once, since nothing it waits
+   on can change within a frame. A script that would never finish holds up its frame until the
+   replay is cut (below).
 5. Random numbers come from a seeded generator, the same sequence every run.
 6. Sound is off: nothing plays, and `play sound until done` doesn't wait.
+
+Scripts are compiled before the first frame, by runtimes that compile (TurboWarp and its forks
+precompile, oscratchl and forkphorus compile as they load), so compiling is in no runtime's time.
 
 Frames run back to back, as fast as the runtime can, but a replay may take no longer than the
 recording did (the budget: `frames` at `framerate`, 10 seconds). Once that much real time has passed
@@ -57,11 +63,17 @@ frames it got through. So the GPU's time and the browser's take frames from a ru
 still scored on script time, on frames another runtime also got through.
 
 A frame still running 3 seconds after the budget is **cut**: the replay stops there and reports the
-frames up to its last checkpoint, with the hash `unfinished`, and the next checkpoint (frame 1 if it
-had reached none) at its script time so far plus 3 seconds. That frame began before the budget ran
-out and has run ever since, so the runtime would have reached that checkpoint no sooner: compared
-there, it does no worse than it deserves, rather than being left out, which would score it only on
-the projects it can manage. A checkpoint past the frames reached is always such a bound.
+frames before it, with the hash `unfinished`, its checkpoints so far, and a **bound**: a checkpoint
+at the frame it was cut in (one past the frames it reached) at the script time before that frame
+plus 3 seconds. That frame began before the budget ran out and has run ever since, so the runtime
+would have finished it, or any later frame, no sooner. Compared at a frame the reference got to
+past it, the runtime does no worse than it deserves, rather than being left out, which would score
+it only on the projects it can manage. A checkpoint past the frames reached is always a bound, and a
+reference's bound is never used.
+
+The runners need to know where each frame begins for that: the browser runners log
+`[REPLAY] frame <f> <script ms> <draw ms> <drifted>` before each frame and `[REPLAY] frames end`
+after the last; oscratchl's watchdog reads the same from the frame loop.
 
 ## Output
 
@@ -86,7 +98,7 @@ or `<id> | error | <message>` then `DONE`. Native runtimes print each line on st
 - **checkpoints**: the script time so far at frames 1, 2, 3, 5, 8, 13, 20, 30, 50, 80, 120, 200, 300,
   500 and 800 (those reached), and at the last frame, as `frame:ms` separated by commas (and a cut
   replay's bound). A runtime is compared with another on the furthest checkpoint both reached, so on
-  exactly the same frames; a reference's bound isn't used.
+  exactly the same frames, or through its bound at the reference's furthest frame.
 - **hash**: 8 hex digits, a hash of the project's state (sprites, clones, variables and lists; a list
   over 10,000 items by its length and 1000 items spread across it) every 30 frames and at the end.
   It only has to be stable within a runtime: it is compared with the same runtime's earlier runs,

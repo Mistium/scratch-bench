@@ -44,8 +44,9 @@ export type ProjectRun =
      */
     hash: string;
     /**
-     * Frame time so far at set frames (1, 2, 3, 5, 8, ... and the last), to compare runtimes on
-     * exactly the frames both got through.
+     * Script time so far at set frames (1, 2, 3, 5, 8, ... and the last), to compare runtimes on
+     * exactly the frames both got through. A cut replay adds the frame it was cut in, past the
+     * frames it reached, as a bound (projects/REPLAY.md).
      */
     checkpoints: Record<number, number>;
   }

@@ -88,6 +88,8 @@ window.BenchReplay = (() => {
      */
     report: (r) =>
       console.log(`[REPLAY] checkpoint ${r.frame} ${r.frameMs} ${r.scriptMs} ${r.drawMs} ${r.drifted}`),
+    /** Tells the runner a frame is starting, with the script time and drift before it. */
+    started: (r) => console.log(`[REPLAY] frame ${r.frame} ${r.scriptMs} ${r.drawMs} ${r.drifted}`),
     /** The result line (projects/REPLAY.md). */
     line: (id, r) => {
       const ms = (x) => Math.round(x * 10) / 10;

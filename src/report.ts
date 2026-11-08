@@ -193,8 +193,10 @@ export const renderReport = (results: SuiteResult[]): string => {
             if (p.error) return "error";
             const speed = relativeSpeed(p, referenceFor(id, byRuntime));
             const base = scratch?.[id];
-            const differs = !!base?.hash && !!p.hash && base.hash_kind === p.hash_kind &&
-              base.hash !== p.hash;
+            // Only hashes made by the same code, of the same frames, compare.
+            const hashed = (x?: { hash?: string | null }) => !!x?.hash && /^[0-9a-f]{8}$/.test(x.hash);
+            const differs = hashed(base) && hashed(p) && base.hash_kind === p.hash_kind &&
+              base.frames === p.frames && base.hash !== p.hash;
             const reached = p.frames! < p.recorded_frames! ? ` (${p.frames}/${p.recorded_frames})` : "";
             return `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${speed === null ? "-" : `${speed.toFixed(2)}×`}${reached}`;
           }),

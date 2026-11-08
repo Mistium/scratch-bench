@@ -29,7 +29,7 @@ const USAGE = `usage: bun run bench [setup] [options]
   --parity-runs N         runs per runtime for the parity suite (default 1)
   --project-runs N        runs of each project for the projects suite (default 3; the medians count)
   --timeout S             seconds before a run is killed (default 300; for the projects suite, each
-                          project's budget plus a minute)
+                          project's budget plus 140 s)
   --display x11|wayland   virtual display backend for rendered native runs (default x11)
   --no-variants           run each runtime in its default VM mode only (not compiler and interpreter, bytecode and not)
   --offline               don't use the network; use cached runtime downloads

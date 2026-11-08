@@ -100,17 +100,23 @@ window.start = async (kind, scripts, compiler = true) => {
 
 /**
  * Makes each frame take a given number of passes over the threads, instead of as many as fit in
- * 75% of the frame or until a redraw is requested, so every runtime does the same work. (The
- * schedulers stop for a redraw outside turbo mode, so the replay runs in turbo mode.) Warp-mode
+ * 75% of the frame or until a redraw is requested, so every runtime does the same work. Warp-mode
  * scripts behave as on an infinitely fast machine: loops never stop for time, and blocks that wait
  * yield at once, since nothing they wait on can change within a frame. Returns how many passes the
  * frame made.
+ *
+ * The forks check the time between passes in different places (before each pass, after it, or
+ * every so many passes), but every one checks `turboMode || !redrawRequested` before each pass,
+ * so that is where the passes are counted and stopped: between passes, turboMode reads true while
+ * the frame has passes left and redrawRequested always reads true. The time never moves, so no
+ * fork stops a frame, or a TurboWarp compiled warp loop, for time.
  */
-
 const patchSequencer = (runtime, passesFor) => {
   const sequencer = runtime.sequencer;
+  const stepThreads = sequencer.stepThreads;
   const stepThread = sequencer.stepThread;
   let inside = 0;
+  let stepping = false;
   let passes = 0;
   // NaN makes the interpreter's "under 500 ms, keep spinning a wait" and "over 500 ms, stop a loop"
   // checks both false: waits yield, loops keep going. A script that never finishes holds up its
@@ -125,20 +131,38 @@ const patchSequencer = (runtime, passesFor) => {
       inside--;
     }
   };
-  sequencer.timer = {
-    start() {
-      passes = 0;
-    },
-    time: () => performance.now(),
-    timeElapsed() {
-      if (inside > 0) return Infinity;
-      if (passes < passesFor()) {
-        passes++;
-        return 0;
-      }
-      return Infinity;
-    },
+  sequencer.stepThreads = function (...args) {
+    passes = 0;
+    stepping = true;
+    try {
+      return stepThreads.apply(this, args);
+    } finally {
+      stepping = false;
+    }
   };
+  sequencer.timer = { start() {}, time: () => 0, timeElapsed: () => 0 };
+  let turbo = runtime.turboMode;
+  let redraw = runtime.redrawRequested;
+  const between = () => stepping && inside === 0;
+  Object.defineProperty(runtime, "turboMode", {
+    configurable: true,
+    get() {
+      if (!between()) return turbo;
+      if (passes >= passesFor()) return false;
+      passes++;
+      return true;
+    },
+    set(on) {
+      turbo = on;
+    },
+  });
+  Object.defineProperty(runtime, "redrawRequested", {
+    configurable: true,
+    get: () => between() || redraw,
+    set(on) {
+      redraw = on;
+    },
+  });
   return () => passes;
 };
 
@@ -203,6 +227,9 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
   const interval = 1000 / (recording.framerate || 30);
   runtime.currentStepTime = interval;
   vm.setTurboMode(true);
+  // TurboWarp and its forks compile a script when it first starts; oscratchl and forkphorus compile
+  // as they load. Compiling here, before the frames, keeps that out of every runtime's time.
+  runtime.precompile?.();
   let frame = 0;
   const passesOf = patchSequencer(runtime, () => recording.passes[frame] ?? 1);
   let drawMs = 0;
@@ -306,11 +333,16 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
   // The budget is real time from the first frame, hashing and all, so that a frame the runner
   // finds still going LATE_MS after it (replay-runner.mjs) has been going at least that long.
   while (frame < recording.frames && performance.now() - start < budgetMs) {
+    // Where a frame begins, so a cut replay is bounded from the frame it was cut in.
+    det.started({ frame, scriptMs, drawMs, drifted });
     // Script time is the runtime's own work for the frame: handling its inputs (starting hats,
     // compiling) and stepping it.
     const t = performance.now();
     const before = drawMs;
     det.setTime(det.EPOCH + frame * interval);
+    // The VM reads its clock (runtime.currentMSecs) when it steps, after the inputs, so a green
+    // flag would reset the timer to the last frame's time; read it now, as every runner does.
+    runtime.currentMSecs = Date.now();
     while (next < recording.inputs.length && recording.inputs[next].frame <= frame) {
       apply(recording.inputs[next++]);
     }
@@ -338,6 +370,7 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
       checkMs += performance.now() - c;
     }
   }
+  console.log("[REPLAY] frames end");
   hashes.push(hashState(vm));
   checkpoints[frame] = scriptMs;
   return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });

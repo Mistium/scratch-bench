@@ -135,6 +135,10 @@ export const statsOf = (runs: SuiteResult["runs"]): SuiteResult["stats"] => {
  * they reached the same frame and don't (not deterministic), and dropped when they stopped at
  * different frames (not comparable). If any run failed, crashed or didn't finish, so does the
  * project: the others may not have done the same work.
+ *
+ * A run cut in a frame that didn't end has a bound past its frames (projects/REPLAY.md), valid
+ * from that frame on. When every run was cut, the result keeps one at the furthest of those frames,
+ * where all of them hold, at their median; otherwise it has none.
  */
 export const combineReplays = (all: ProjectRun[], runs: number, runError?: string): unknown => {
   const ran = all.filter((r) => !("error" in r)) as Extract<ProjectRun, { hash: string }>[];
@@ -142,14 +146,22 @@ export const combineReplays = (all: ProjectRun[], runs: number, runError?: strin
     return all.find((r) => "error" in r) ?? { error: runError ?? "no result" };
   }
   const median = (xs: number[]) => summarize(xs)!.median;
-  const shared = Object.keys(ran[0].checkpoints).filter((f) => ran.every((r) => f in r.checkpoints));
+  const real = (r: (typeof ran)[number]) => Object.keys(r.checkpoints).filter((f) => Number(f) <= r.frames);
+  const shared = real(ran[0]).filter((f) => ran.every((r) => real(r).includes(f)));
+  const bounds = ran.map((r) => Object.keys(r.checkpoints).map(Number).filter((f) => f > r.frames).sort((x, y) => x - y)[0]);
+  const bound = bounds.every((f) => f !== undefined)
+    ? { [Math.max(...bounds)]: median(ran.map((r, i) => r.checkpoints[bounds[i]!])) }
+    : {};
   const sameFrames = ran.every((r) => r.frames === ran[0].frames);
   return {
     recorded_frames: ran[0].recorded_frames,
     frames: Math.min(...ran.map((r) => r.frames)),
     drifted: Math.max(...ran.map((r) => r.drifted)),
     hash: !sameFrames ? null : ran.every((r) => r.hash === ran[0].hash) ? ran[0].hash : "mixed",
-    checkpoints: Object.fromEntries(shared.map((f) => [f, median(ran.map((r) => r.checkpoints[Number(f)]))])),
+    checkpoints: {
+      ...Object.fromEntries(shared.map((f) => [f, median(ran.map((r) => r.checkpoints[Number(f)]))])),
+      ...bound,
+    },
     frame_ms: summarize(ran.map((r) => r.frame_ms)),
     script_ms: summarize(ran.map((r) => r.script_ms)),
     draw_ms: summarize(ran.map((r) => r.draw_ms)),

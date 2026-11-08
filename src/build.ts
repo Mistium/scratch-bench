@@ -102,7 +102,9 @@ export const buildSuite = async (suite: Suite, o: BuildOptions = {}): Promise<Bu
       projects,
       // A replay stops itself at its recording's length, and the runner gives up on a frame that
       // doesn't end soon after; this leaves time to start the runtime and load the project.
-      timeoutMs: Math.max(...projects.map((p) => p.durationMs)) + 60_000,
+      // Loading (the browser, a project of up to 13 MB, its costumes) takes what it takes; the
+      // replay itself is cut 3 s after its budget.
+      timeoutMs: Math.max(...projects.map((p) => p.durationMs)) + 140_000,
     };
   }
   const sb3 = path.join(BUILD_DIR, `${suite.id}.sb3`);

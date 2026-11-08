@@ -277,6 +277,7 @@ describe("buildScores with real projects", () => {
       expect(lastTotal(old, "turbowarp")).toBe(lastTotal(before, "turbowarp"));
       expect(lastTotal(old, "scratch")).toBe(lastTotal(before, "scratch"));
       expect(old.runtimes.turbowarp.projects.at(-1)).toBeNull();
+      expect(old.projectRuns.at(-1)).toBe(false);
 
       // TurboWarp replayed both projects; Scratch was half as fast on a and cut off on b.
       addProjects(run, "turbowarp", { a: replay(300, 500), b: replay(300, 1000) });
@@ -289,6 +290,15 @@ describe("buildScores with real projects", () => {
       expect(tw).toBeCloseTo(Math.sqrt((300 / 500) * (300 / 1000)), 2);
       // Scratch on a: half TurboWarp's speed. On b, compared at frame 30: 100 ms against 200 ms.
       expect(sc).toBeCloseTo(Math.sqrt(0.5 * (300 / 500) * 0.5 * (300 / 1000)), 2);
+      // Only this run scored projects, so only its totals are of that kind.
+      expect(s.projectRuns.at(-1)).toBe(true);
+      expect(s.projectRuns.filter(Boolean).length).toBe(1);
+
+      // Scratch failing the heavier project leaves its score at its speed on the other, rather
+      // than moving it by how heavy the project it failed was.
+      addProjects(run, "scratch", { a: replay(300, 1000), b: { error: "crashed" } });
+      const failed = buildScores(loadDataset(dir), { host });
+      expect(failed.runtimes.scratch.projects.at(-1)).toBeCloseTo(sc, 2);
       expect(lastTotal(s, "turbowarp")).not.toBe(lastTotal(before, "turbowarp"));
       // Runtimes in the run without replays can't be compared with those with them: no total.
       const others = Object.keys(s.runtimes).filter((id) =>

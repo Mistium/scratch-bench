@@ -41,8 +41,9 @@ Each replay reports:
   runtime has none;
 - the frames it got through: a replay may take no longer than the recording did, 10 seconds, so a
   runtime that can't keep up gets through fewer. A frame still running 3 seconds after that is cut,
-  and the runtime is compared at the next checkpoint as if it had reached it then: a bound it would
-  only have done worse than, so a runtime too slow to finish a frame still counts as slow;
+  and the runtime is compared at TurboWarp's furthest frame as if it had finished that frame then:
+  a bound it would only have done worse than, so a runtime too slow to finish a frame still counts
+  as slow;
 - frames that made a different number of passes than recorded (**drifted**): those did different
   work, and a replay with more than 1% of them isn't scored;
 - a hash of the project's state every 30 frames and at the end. The same runtime should always give
@@ -56,11 +57,14 @@ A runtime's speed on a project is TurboWarp's script time over its own at the fu
 both reached, in the same run, so they are always compared on exactly the same frames: 0.5 is half as
 fast as TurboWarp. There is no other reference: a project TurboWarp couldn't replay isn't scored.
 
-In the overall score each project counts as much as two benchmarks of average weight. Its value
-there is that speed times TurboWarp's own frames per millisecond of script time on it, so it is absolute like the
-benchmarks' and a change in TurboWarp shows in its score too. Projects a runtime failed to replay
-(an error, not slowness) are left out of its projects score; a runtime with none (one that can't
-replay) has no total in a run that scored projects, since it couldn't be compared with the others.
+A runtime's projects score is the geometric mean of its speeds times TurboWarp's own speed over all
+the run's projects (the geometric mean of its frames per millisecond of script time on each), so it
+is absolute like the benchmarks' and a change in TurboWarp shows in its score too. In the overall
+score each project counts as much as two benchmarks of average weight. Projects a runtime failed to
+replay (an error, not slowness) are left out of its projects score, which then changes only by how
+fast it was on them, not by how heavy they are. A runtime with none (one that can't replay) has no
+total in a run that scored projects, since it couldn't be compared with the others; the site only
+compares totals between runs alike, with projects or without.
 
 Runtimes take part when their launcher can replay (`replay` in `src/runtimes/types.ts`): every
 scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), forkphorus

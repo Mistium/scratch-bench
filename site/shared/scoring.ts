@@ -51,51 +51,54 @@ const comparable = (p: Replayed): p is NonNullable<Replayed> =>
   !!p && !p.error && p.frames != null && !!p.checkpoints && (p.drifted ?? 0) <= p.frames * 0.01;
 
 /**
- * A replay's checkpoints, as frame → script time. One past the frames it reached is a bound: it was
- * cut in a frame that didn't end, and would have reached that checkpoint no sooner. Compared there
- * a runtime does no worse than it deserves, so its own bound counts, but a reference's doesn't.
+ * A replay's checkpoints, as frame → script time, and its bound if it has one. A checkpoint past
+ * the frames it reached is a bound: it was cut in a frame that didn't end (that frame's number),
+ * and would have finished that frame, or any after it, no sooner. Compared there a runtime does no
+ * worse than it deserves, so a runtime's bound counts, but a reference's never does.
  */
-const marksOf = (p: NonNullable<Replayed>, bounds: boolean) =>
-  Object.entries(p.checkpoints ?? {}).filter(([f, ms]) => ms > 0 && (bounds || Number(f) <= p.frames!));
-
-/** The furthest checkpoint frame both replays reached, with each one's script time there. */
-const sharedCheckpoint = (p: NonNullable<Replayed>, ref: NonNullable<Replayed>) => {
-  const theirs = Object.fromEntries(marksOf(ref, false));
-  const [frame, mine] = marksOf(p, true)
-    .filter(([f]) => f in theirs)
-    .sort(([x], [y]) => Number(y) - Number(x))[0] ?? [];
-  return frame === undefined ? null : { mine: mine!, theirs: theirs[frame]! };
+const marksOf = (p: NonNullable<Replayed>) => {
+  const real: [number, number][] = [];
+  let bound: [number, number] | null = null;
+  for (const [f, ms] of Object.entries(p.checkpoints ?? {})) {
+    if (!(ms > 0)) continue;
+    if (Number(f) <= p.frames!) real.push([Number(f), ms]);
+    else if (!bound || Number(f) < bound[0]) bound = [Number(f), ms];
+  }
+  return { real: real.sort(([x], [y]) => y - x), bound };
 };
 
 /**
  * How fast a replay ran against the reference's, on exactly the same frames: the reference's script
  * time over its own at the furthest checkpoint both reached (a runtime that couldn't get through the
- * recording in its time is compared on the frames it did). 1 for the reference itself; null when
- * either can't be compared.
+ * recording in its time is compared on the frames it did). A replay cut in a frame the reference
+ * got past is compared at the reference's furthest frame, through its bound. 1 for the reference
+ * itself; null when either can't be compared.
  */
 export const relativeSpeed = (p: Replayed, reference: Replayed): number | null => {
   if (!comparable(p) || !comparable(reference)) return null;
-  const shared = sharedCheckpoint(p, reference);
-  return shared && shared.theirs / shared.mine;
+  const theirs = marksOf(reference).real;
+  const mine = marksOf(p);
+  const [furthest, theirTime] = theirs[0] ?? [];
+  if (mine.bound && furthest !== undefined && furthest >= mine.bound[0]) return theirTime! / mine.bound[1];
+  const at = new Map(theirs);
+  const shared = mine.real.find(([f]) => at.has(f));
+  return shared ? at.get(shared[0])! / shared[1] : null;
 };
 
 /**
- * A replay's score for one project, in frames per millisecond of script time: its speed against the
- * reference on the same frames, times the reference's own frames per millisecond over as much of the recording
- * as it got through. Absolute, so a change in the reference shows in its own score; comparable
- * between runtimes of the same run.
+ * The reference's speed on a project, in frames per millisecond of script time, over as much of the
+ * recording as it got through.
  */
-export const projectValue = (p: Replayed, reference: Replayed): number | null => {
-  const speed = relativeSpeed(p, reference);
-  if (speed === null || !comparable(reference)) return null;
-  const [furthest, ms] = marksOf(reference, false).sort(([x], [y]) => Number(y) - Number(x))[0] ?? [];
-  return furthest === undefined ? null : speed * (Number(furthest) / ms!);
+export const referenceRate = (reference: Replayed): number | null => {
+  if (!comparable(reference)) return null;
+  const [furthest, ms] = marksOf(reference).real[0] ?? [];
+  return furthest === undefined ? null : furthest / ms!;
 };
 
 /** The reference replay for a project among a run's results, if it can be compared. */
 export const referenceFor = <T extends Replayed>(id: string, runtimes: Record<string, Record<string, T>>): T | undefined => {
   const p = runtimes[PROJECT_REFERENCE]?.[id];
-  return comparable(p) && marksOf(p, false).length ? p : undefined;
+  return comparable(p) && marksOf(p).real.length ? p : undefined;
 };
 
 /** The share of the total an average benchmark has: its category's weight over its category's size. */
@@ -122,15 +125,27 @@ export const categoryWeight = (id: CategoryId, mode: WeightMode): number =>
   mode === "equal" ? 1 : CATEGORIES[id].weight;
 
 /**
- * `projects` maps each project the run scored to the runtime's value for it (see projectValue), null
- * where it can't be compared. Without it the total is the benchmarks' alone, as for runs that scored
- * no projects; with it, a runtime with none of them comparable has no total, since its total
- * wouldn't be comparable with the others'.
+ * The real projects a run scored, for one runtime: its speed against the reference on each
+ * (relativeSpeed; null where it can't be compared), and the reference's own speed over all of them
+ * (the geometric mean of their referenceRate), which puts the projects' score in frames per
+ * millisecond, absolute like the benchmarks'.
+ */
+export interface ProjectScores {
+  speeds: Medians;
+  scale: number;
+}
+
+/**
+ * Without `projects` the total is the benchmarks' alone, as for runs that scored no projects; with
+ * it, a runtime with none of them comparable has no total, since its total wouldn't be comparable
+ * with the others'. Projects it couldn't be compared on are left out of its projects score, which
+ * is the geometric mean of its speeds on the others times `projects.scale`: leaving a project out
+ * changes it only by how fast the runtime was on that project, not by the project's size.
  */
 export const scoreRuntime = (
   runtime: Medians,
   mode: WeightMode = "default",
-  projects?: Medians,
+  projects?: ProjectScores,
 ): RuntimeScore => {
   const categories = {} as Record<CategoryId, CategoryScore>;
   let counted = 0;
@@ -160,14 +175,13 @@ export const scoreRuntime = (
   }
 
   let projectScore: CategoryScore | null = null;
-  const ids = Object.keys(projects ?? {});
+  const ids = Object.keys(projects?.speeds ?? {});
   if (ids.length) {
-    // Projects that couldn't be compared (a failed or cut-off replay) are left out rather than
-    // blanking the total; none at all means the runtime can't be compared.
-    const speeds = ids.map((id) => projects![id]).filter(usable);
+    const speeds = ids.map((id) => projects!.speeds[id]).filter(usable);
     const coverage = speeds.length / ids.length;
+    const speed = speeds.length ? geometricMean(speeds.map((value) => ({ value, weight: 1 }))) : null;
     projectScore = {
-      score: speeds.length ? geometricMean(speeds.map((value) => ({ value, weight: 1 }))) : null,
+      score: speed === null ? null : speed * projects!.scale,
       coverage,
       counted: speeds.length,
       total: ids.length,

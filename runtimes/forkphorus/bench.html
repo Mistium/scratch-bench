@@ -112,8 +112,9 @@ window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
     drawMs += performance.now() - t;
   };
 
+  // Read once: reading it per input could force a layout inside the frame's time.
+  const rect = stage.canvas.getBoundingClientRect();
   const at = (x, y) => {
-    const rect = stage.canvas.getBoundingClientRect();
     return { clientX: rect.left + (x + 240) * stage.zoom, clientY: rect.top + (180 - y) * stage.zoom };
   };
   const onStage = (x, y) => Math.abs(x) < 240 && Math.abs(y) < 180;
@@ -174,6 +175,8 @@ window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
   // The budget is real time from the first frame, hashing and all, so that a frame the runner
   // finds still going LATE_MS after it (replay-runner.mjs) has been going at least that long.
   while (frame < recording.frames && performance.now() - start < budgetMs) {
+    // Where a frame begins, so a cut replay is bounded from the frame it was cut in.
+    det.started({ frame, scriptMs, drawMs, drifted });
     // Script time is the runtime's own work for the frame (handling its inputs, stepping it).
     const t = performance.now();
     const before = drawMs;
@@ -202,6 +205,7 @@ window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
       checkMs += performance.now() - c;
     }
   }
+  console.log("[REPLAY] frames end");
   hashes.push(forkphorusState(stage));
   checkpoints[frame] = scriptMs;
   return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });
