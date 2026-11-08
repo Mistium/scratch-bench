@@ -231,6 +231,11 @@ const runSuite = async (
     kind = "gui";
     launcher = rt.gui;
   }
+  // Replays go to whichever launcher can do them (a native runtime's is headless).
+  if (suite.id === "projects" && !launcher?.replay && rt.headless?.replay) {
+    kind = "headless";
+    launcher = rt.headless;
+  }
   if (!launcher) {
     const skipped = suite.launcher === "gui"
       ? "no rendered (gui) launcher for this runtime yet"

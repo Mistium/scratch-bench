@@ -37,7 +37,7 @@ For frame `f` from 0 to `frames - 1`:
    the runtime runs the project at another). It doesn't move within a frame.
 2. The inputs recorded for frame `f` happen, in order, as they would from a person: key presses
    start key hats and hold the key; a press on a sprite starts its click hats; a draggable sprite
-   is dragged once the pointer moves 3 or more units, or after 400 ms held; the wheel starts the
+   is dragged once the pointer moves more than 3 units, or after 400 ms held; the wheel starts the
    up/down arrow key hats.
 3. Exactly `passes[f]` passes run, whether or not the frame asks for a redraw, so every runtime does
    the same work (the recordings come from TurboWarp, and runtimes stop for redraws differently).

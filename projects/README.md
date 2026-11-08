@@ -2,10 +2,10 @@
 
 Real Scratch projects, each with a recording of a person using it, replayed as a benchmark (the
 `projects` suite). The projects and recordings come from TurboWarp's
-[pianola](https://github.com/TurboWarp/pianola) benchmark corpus; this suite uses 13 of them, the first
+[pianola](https://github.com/TurboWarp/pianola) benchmark corpus; this suite uses 12 of them, the first
 10 seconds of each:
 
-- emulators: Linux on a RISC-V emulator, a Game Boy, a NES and a BBC Micro;
+- emulators: a Game Boy, a NES and a BBC Micro;
 - simulations: Navier Stokes, Particle Lenia, the Game of Life and flow-field pathfinding;
 - 3D: a renderer and an OBJ importer;
 - games: Goopy, Bloons TD and Doom.
@@ -50,11 +50,16 @@ same frames: 0.5 is half as fast as TurboWarp. The overall score counts each pro
 as two benchmarks.
 
 Runtimes take part when their launcher can replay (`replay` in `src/runtimes/types.ts`): every
-scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), and forkphorus
-through its own page (`runtimes/forkphorus/bench.html`, which patches its frame loop as it serves it).
-A native runtime takes part by implementing `--replay` (REPLAY.md). The rest are skipped.
+scratch-vm based runtime through the browser runner (`runtimes/chromium/index.html`), forkphorus
+through its own page (`runtimes/forkphorus/bench.html`, which patches its frame loop as it serves it),
+and oscratchl builds that have `--replay`. Any other native runtime takes part by implementing
+`--replay` (REPLAY.md); the rest are skipped.
 
 A run whose biggest process grows past 6 GB (`BENCH_MEMORY_LIMIT_MB`) is stopped and reported as an
 error, so a runtime that leaks can't take the machine down with it.
+
+Projects that wait for real time to pass within a frame can't be replayed this way, since time
+stands still within a frame: Linux on a RISC-V emulator (pianola's corpus has it) runs each frame
+until the clock shows 50 ms have passed, so no runtime gets past its first frame.
 
 The projects are by their authors on scratch.mit.edu, shared under CC BY-SA 2.0.

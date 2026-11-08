@@ -1,11 +1,5 @@
 [
  {
-  "id": "1201938491",
-  "title": "Linux 6.1.14-rv32ima On Scratch",
-  "author": "Tacodiva7729",
-  "sha256": "53e155a9998ee23b4c2d5dca5d8589598c74560748384eac326ab1c4c9ae053d"
- },
- {
   "id": "1274137785",
   "title": "SGBE Gameboy emulator V1.20",
   "author": "Iwokeuppls",

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { run } from "../webbundle.ts";
-import type { Command, Variant } from "./types.ts";
+import type { Command, Replay, Variant } from "./types.ts";
 
 export const REPO = "https://git.rotur.dev/Mist/oscratchl.git";
 
@@ -81,6 +81,36 @@ export const headlessCommand = (
   cwd: path.dirname(bin),
   projectLine: PROJECT_LINE,
 });
+
+/** A replay of a recording (projects/REPLAY.md), headless, in the same program as a normal run. */
+export const replayCommand = (
+  bin: string,
+  sb3: string,
+  r: Replay,
+  runtimeSource?: string,
+  variant?: Variant | null,
+): Command => ({
+  cmd: [
+    ...program(bin, sb3, runtimeSource, variant),
+    "--replay",
+    r.recording,
+    "--replay-id",
+    r.id,
+    "--replay-budget",
+    String(r.budgetMs),
+  ],
+  cwd: path.dirname(bin),
+  projectLine: /^\[PROJECT\] (.*)$/,
+});
+
+/** Whether a build of oscratchl has replay mode (older ones would take the flags for the project). */
+export const canReplay = (bin: string): boolean => {
+  try {
+    return fs.readFileSync(bin).includes("--replay-budget");
+  } catch {
+    return false;
+  }
+};
 
 export const windowCommand = (
   bin: string,
