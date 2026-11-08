@@ -49,8 +49,8 @@ Each replay reports:
 - the project's state at each checkpoint, hashed the same way in every runtime (REPLAY.md,
   "State"). A runtime is compared with TurboWarp only on the frames up to where their states last
   agreed: past that it was computing something else (a feature it lacks, a setting it ignores),
-  and its time says nothing about running the project. One whose state never agreed isn't compared
-  on that project.
+  and its time says nothing about running the project. One whose state agreed for fewer than 30
+  frames isn't compared on that project.
 
 Each project is replayed 3 times (`--project-runs`) and the medians kept; if any of the 3 fails, so
 does the project. The replays go in rounds: each round replays every project in every runtime, the

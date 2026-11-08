@@ -49,6 +49,13 @@ type Replayed = {
 } | undefined;
 
 /**
+ * A replay whose state stopped agreeing with the reference's is compared on the frames before only
+ * if there were at least this many: the first frames are mostly a project setting up, and a speed
+ * from them says little about running it.
+ */
+export const MIN_AGREED_FRAMES = 30;
+
+/**
  * How far a replay's state agreed with the reference's: `through` is the last checkpoint frame
  * both have a state for at which they still agreed, `differs` the first at which they didn't
  * ("mixed", a runtime whose own runs disagreed, never agrees). Null when either has no states
@@ -99,7 +106,7 @@ export const relativeSpeed = (p: Replayed, reference: Replayed): number | null =
   // agreeing, it was doing other work, and its time says nothing about running the project.
   const agreed = agreement(p, reference);
   if (agreed?.differs !== null && agreed?.differs !== undefined) {
-    if (agreed.through === null) return null;
+    if (agreed.through === null || agreed.through < MIN_AGREED_FRAMES) return null;
     const until = agreed.through;
     const theirs = new Map(marksOf(reference).real.filter(([f]) => f <= until));
     const shared = marksOf(p).real.find(([f]) => f <= until && theirs.has(f));

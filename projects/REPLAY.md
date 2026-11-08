@@ -109,9 +109,9 @@ or `<id> | error | <message>` then `DONE`. Native runtimes print each line on st
 
 So that a runtime that gets faster by computing something else shows up, the state at each
 checkpoint is hashed the same way in every runtime, and a runtime is compared with the reference
-(TurboWarp) only on the frames up to the last checkpoint at which their states agreed. A runtime
-whose state never agreed isn't compared on that project: whatever it was doing, it wasn't running
-it. Every runner hashes the state this way (`BenchReplay.stateHash` in `runtimes/replay.js`, and
+(TurboWarp) only on the frames up to the last checkpoint at which their states agreed, and only if
+that is frame 30 or later (the first frames are mostly a project setting up). A runtime whose state
+agreed for fewer isn't compared on that project: whatever it was doing, it wasn't running it. Every runner hashes the state this way (`BenchReplay.stateHash` in `runtimes/replay.js`, and
 `hashState` in oscratchl's `src/io/replay.osl`; `src/replay-state.test.ts` pins an example):
 
 - Each target (the stage, every sprite and every clone) is a **record**: fields joined by U+001F.

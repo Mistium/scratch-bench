@@ -201,11 +201,13 @@ describe("scoreRuntime with real projects", () => {
     expect(agreement(other, reference)).toEqual({ through: 30, differs: 300 });
     // Never agreed: not compared at all.
     expect(relativeSpeed(replay(300, { 1: 1, 300: 10 }, states({ 1: "x", 300: "y" })), reference)).toBeNull();
-    // Its own runs disagreed at frame 30: nothing to check after frame 1.
-    expect(agreement(replay(300, { 1: 4, 30: 80, 300: 1000 }, states({ 1: "a", 30: "mixed", 300: "c" })), reference))
-      .toEqual({ through: 1, differs: 30 });
+    // Its own runs disagreed at frame 30: nothing to check after frame 1, too few frames to compare.
+    const mixed = replay(300, { 1: 4, 30: 80, 300: 1000 }, states({ 1: "a", 30: "mixed", 300: "c" }));
+    expect(agreement(mixed, reference)).toEqual({ through: 1, differs: 30 });
+    expect(relativeSpeed(mixed, reference)).toBeNull();
     // A cut replay that stopped agreeing isn't compared through its bound.
-    expect(relativeSpeed(replay(30, { 1: 4, 30: 80, 31: 3080 }, states({ 1: "a", 30: "x" })), reference)).toBe(0.5);
+    const longer = replay(300, { 1: 2, 30: 40, 50: 60, 300: 500 }, states({ 1: "a", 30: "b", 50: "c", 300: "d" }));
+    expect(relativeSpeed(replay(50, { 1: 4, 30: 80, 50: 120, 51: 3120 }, states({ 1: "a", 30: "b", 50: "x" })), longer)).toBe(0.5);
     // Older results without states aren't checked.
     expect(agreement(replay(300, { 300: 1000 }), reference)).toBeNull();
     expect(relativeSpeed(replay(300, { 300: 1000 }), reference)).toBe(0.5);
