@@ -51,8 +51,9 @@ test("parity.parse reads the older format without messages", () => {
 
 test("projects.parse reads each replay's result line, or its error", () => {
   expect(projects.parse([
-    "324569477 | 1726.5 | 420.5 | 2930.6 | 971/971 | 0 | f8c55320 | 1:12.5,2:20,971:1726.5",
-    "1201938491 | 41012.3 | 900.1 | 60012 | 310/510 | 2 | 0a1b2c3d | 310:41012.3",
+    "324569477 | 1726.5 | 420.5 | 2930.6 | 971/971 | 0 | f8c55320 | 1:12.5:0011aaff,2:20:0022bbee,971:1726.5:f8c55320",
+    // Cut in frame 311: a bound, with no state.
+    "1201938491 | 41012.3 | 900.1 | 60012 | 310/510 | 2 | unfinished | 300:38012.3:0a1b2c3d,311:41012.3",
     "1274137785 | error | a frame ran for over a minute",
     "DONE",
   ])).toEqual({
@@ -65,6 +66,7 @@ test("projects.parse reads each replay's result line, or its error", () => {
       drifted: 0,
       hash: "f8c55320",
       checkpoints: { 1: 12.5, 2: 20, 971: 1726.5 },
+      states: { 1: "0011aaff", 2: "0022bbee", 971: "f8c55320" },
     },
     "1201938491": {
       script_ms: 41012.3,
@@ -73,8 +75,9 @@ test("projects.parse reads each replay's result line, or its error", () => {
       frames: 310,
       recorded_frames: 510,
       drifted: 2,
-      hash: "0a1b2c3d",
-      checkpoints: { 310: 41012.3 },
+      hash: "unfinished",
+      checkpoints: { 300: 38012.3, 311: 41012.3 },
+      states: { 300: "0a1b2c3d" },
     },
     "1274137785": { error: "a frame ran for over a minute" },
   });

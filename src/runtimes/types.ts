@@ -13,8 +13,6 @@ export interface Launcher {
    * projects suite.
    */
   replay?(sb3: string, replay: Replay, variant?: Variant | null): Command;
-  /** Whose code makes the replay's state hash: hashes only compare between replays with the same. */
-  replayHash?: string;
   display?: boolean;
 }
 

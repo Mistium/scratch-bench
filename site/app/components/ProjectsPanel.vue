@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectResult } from "#shared/types";
 import { projectTitle } from "#shared/projects";
-import { PROJECT_REFERENCE, referenceFor, relativeSpeed } from "#shared/scoring";
+import { agreement, PROJECT_REFERENCE, referenceFor, relativeSpeed } from "#shared/scoring";
 
 const titleOf = (id: string) =>
   runtimes.value.map((r) => r.projects[id]?.title).find(Boolean) ?? projectTitle(id);
@@ -52,23 +52,24 @@ const cell = (id: string, r: Row) => {
     return p.ms ? { text: fmtMs(p.ms.median), state: "ok", title: "real time (an older run)" } : { text: "-", state: "missing" };
   }
   const speed = speedOf(id, r);
-  const scratch = all.value.scratch?.[id];
-  // Hashes only compare between replays made by the same code, of the same frames.
-  const hashed = (x: ProjectResult | undefined) => !!x?.hash && /^[0-9a-f]{8}$/.test(x.hash);
-  const differs = r.timestamp === referenceRun.value && hashed(scratch) && hashed(p) &&
-    scratch!.hash_kind === p.hash_kind && scratch!.frames === p.frames && scratch!.hash !== p.hash;
+  // Where its state stopped agreeing with the reference's: it was computing something else.
+  const agreed = r.timestamp === referenceRun.value ? agreement(p, referenceFor(id, all.value)) : null;
+  const differs = agreed?.differs ?? null;
   const notes = [
     `${fmtMs(p.script_ms?.median)} of scripts for ${p.frames} of ${p.recorded_frames} frames`,
     `${fmtMs(p.frame_ms?.median)} in all, ${fmtMs(p.draw_ms?.median)} of it drawing`,
-    speed !== null
+    speed !== null && differs !== null
+      ? `compared with ${referenceName.value} on frames 1-${agreed!.through}, the last before its state stopped agreeing (at frame ${differs})`
+      : differs !== null
+      ? `its state didn't agree with ${referenceName.value}'s from frame ${differs}, so it isn't compared`
+      : speed !== null
       ? Object.keys(p.checkpoints ?? {}).some((f) => Number(f) > (p.frames ?? 0))
         ? `cut in frame ${(p.frames ?? 0) + 1}, which didn't end: compared with ${referenceName.value} as if it had finished it then, which it would only have done later`
         : `compared with ${referenceName.value} on the same frames` : "not comparable",
     p.drifted ? `${p.drifted} frames made a different number of passes than recorded` : "",
-    differs ? "ended in a different state from Scratch" : "",
   ].filter(Boolean);
   return {
-    text: `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${speed !== null ? `${speed.toFixed(2)}×` : "-"}`,
+    text: `${differs !== null ? "≠" : ""}${p.drifted ? "*" : ""}${speed !== null ? `${speed.toFixed(2)}×` : "-"}`,
     state: cut(p) ? "cut" : "ok",
     title: notes.join("; "),
   };
@@ -99,7 +100,8 @@ const totals = computed(() =>
         How fast each runtime runs the first 10 seconds of a recording of someone using each project, replayed frame by frame
         and the same in every runtime (like TurboWarp's pianola): its script time against TurboWarp's on exactly the same
         frames, in the same run, so 0.5× is half as fast. A runtime that can't get through the recording in its 10 seconds is compared on
-        the frames it did. ≠ ended in a different state from Scratch; * did different work from the recording.
+        the frames it did. ≠ its state stopped agreeing with TurboWarp's, so it is only compared on the frames before;
+        * made a different number of passes than the recording.
       </p>
     </header>
 

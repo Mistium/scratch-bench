@@ -136,6 +136,9 @@ export const statsOf = (runs: SuiteResult["runs"]): SuiteResult["stats"] => {
  * different frames (not comparable). If any run failed, crashed or didn't finish, so does the
  * project: the others may not have done the same work.
  *
+ * The states are kept at the checkpoints kept, as "mixed" where the runs disagree (the runtime
+ * isn't deterministic there, so its state can't be checked against another's).
+ *
  * A run cut in a frame that didn't end has a bound past its frames (projects/REPLAY.md), valid
  * from that frame on. When every run was cut, the result keeps one at the furthest of those frames,
  * where all of them hold, at their median; otherwise it has none.
@@ -162,6 +165,10 @@ export const combineReplays = (all: ProjectRun[], runs: number, runError?: strin
       ...Object.fromEntries(shared.map((f) => [f, median(ran.map((r) => r.checkpoints[Number(f)]))])),
       ...bound,
     },
+    states: Object.fromEntries(shared.map((f) => {
+      const all = ran.map((r) => r.states?.[Number(f)]);
+      return [f, all.every((s) => s && s === all[0]) ? all[0] : "mixed"];
+    })),
     frame_ms: summarize(ran.map((r) => r.frame_ms)),
     script_ms: summarize(ran.map((r) => r.script_ms)),
     draw_ms: summarize(ran.map((r) => r.draw_ms)),

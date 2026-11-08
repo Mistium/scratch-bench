@@ -121,7 +121,6 @@ export const ampmod: Runtime = {
   headless: { command: command("node-vm.mjs") },
   gui: {
     command: command("chromium-vm.mjs"),
-    replayHash: "scratch-vm",
     replay: (sb3, r) => {
       const c = command("chromium-vm.mjs")(sb3);
       return { ...c, env: { ...c.env, ...replayEnv(r) } };

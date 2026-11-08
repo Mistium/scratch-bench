@@ -280,7 +280,8 @@ const runSuite = async (
       base.runtime.display = measured.display;
       results[p.id] = {
         title: p.title,
-        hash_kind: launcher.replayHash ?? rt.id,
+        // Every runner hashes the state the same way (projects/REPLAY.md, "State").
+        hash_kind: "state",
         recorded_frames: p.frames,
         ...(measured.results as object),
       };

@@ -105,8 +105,10 @@ export interface ProjectResult {
    * runs stopped at different frames.
    */
   hash: string | null;
-  /** Which code made the hash: only hashes of the same kind compare (null in older results). */
+  /** How the hash was made: "state" (projects/REPLAY.md) in every runner; older results differ. */
   hash_kind: string | null;
+  /** The project's state at each checkpoint, to check against TurboWarp's (newer results). */
+  states?: Record<string, string> | null;
   /** Script time so far at set frames (1, 2, 3, 5, 8, ... and the last reached). */
   checkpoints: Record<string, number> | null;
   /** Older results, from replays in real time. */

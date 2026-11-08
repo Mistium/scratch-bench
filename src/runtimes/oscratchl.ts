@@ -134,7 +134,6 @@ export const oscratchl: Runtime = {
     command: (sb3, v) => headlessCommand(binary!, sb3, runtimeSource, v),
     // Set up by setup(), for builds with replay mode.
     replay: undefined,
-    replayHash: "oscratchl",
   },
   gui: {
     display: true,

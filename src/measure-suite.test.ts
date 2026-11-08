@@ -10,6 +10,7 @@ const run = (frames: number, checkpoints: Record<number, number>, extra = {}) =>
   drifted: 0,
   hash: "aaaa0000",
   checkpoints,
+  states: Object.fromEntries(Object.keys(checkpoints).filter((f) => Number(f) <= frames).map((f) => [f, `s${f}`])),
   ...extra,
 });
 
@@ -52,4 +53,12 @@ test("combineReplays keeps a bound only when every run was cut, where all of the
   // One run finished: no bound, and the cut run's bound isn't taken for a real checkpoint.
   const mixed = combineReplays([cut(127, { 1: 2, 120: 220 }, 3220), run(300, { 1: 2, 120: 230, 128: 240, 300: 600 })], 2) as any;
   expect(mixed.checkpoints).toEqual({ 1: 2, 120: 225 });
+});
+
+test("combineReplays keeps each checkpoint's state, or marks the runs disagreeing", () => {
+  const r = combineReplays([
+    run(300, { 1: 2, 30: 40, 300: 500 }),
+    run(300, { 1: 2, 30: 40, 300: 500 }, { states: { 1: "s1", 30: "other", 300: "s300" } }),
+  ], 2) as any;
+  expect(r.states).toEqual({ 1: "s1", 30: "mixed", 300: "s300" });
 });

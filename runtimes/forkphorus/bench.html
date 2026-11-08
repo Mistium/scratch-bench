@@ -61,16 +61,24 @@ window.start = async (scripts) => {
 // number of passes window.__benchFrame asks for. Input goes through the same DOM events the player
 // listens for. forkphorus's warp mode never stops for time already.
 
-const forkphorusState = (stage) => {
-  const { round, fnv1a } = BenchReplay;
-  const values = (o) =>
-    Object.keys(o ?? {}).sort().map((k) => [k, Array.isArray(o[k]) ? BenchReplay.listValues(o[k]) : round(o[k])]);
-  const of = (t) => [
-    t.name, !!t.isClone, round(t.scratchX), round(t.scratchY), round(t.direction), round(t.scale),
-    t.currentCostumeIndex, t.visible, values(t.filters), values(t.vars), values(t.lists),
-  ];
-  return fnv1a(JSON.stringify([of(stage), ...stage.children.map(of)]));
-};
+/** The project's state, hashed as every runner does (BenchReplay.stateHash). */
+const ROTATION = ["all around", "left-right", "don't rotate"];
+const forkphorusState = (stage) =>
+  BenchReplay.stateHash([stage, ...stage.children].map((t) => ({
+    stage: t === stage,
+    original: !t.isClone,
+    name: t === stage ? "Stage" : t.name,
+    x: t.scratchX, y: t.scratchY, direction: t.direction, size: t.scale * 100,
+    costume: t.currentCostumeIndex,
+    visible: t.visible,
+    rotationStyle: typeof t.rotationStyle === "number" ? ROTATION[t.rotationStyle] : t.rotationStyle,
+    draggable: !!t.isDraggable,
+    layer: stage.children.indexOf(t),
+    effects: t.filters,
+    // forkphorus keeps variables by name, so it can't have two of one name.
+    variables: Object.entries(t.vars ?? {}),
+    lists: Object.entries(t.lists ?? {}),
+  })));
 
 window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
   const det = BenchReplay;
@@ -159,8 +167,9 @@ window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
   const gl = stage.renderer.gl;
   const pixel = new Uint8Array(4);
   const finishGpu = () => gl && gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-  const hashes = [];
+  // At each checkpoint, the script time so far and the project's state.
   const checkpoints = {};
+  const states = {};
   let frame = 0;
   let next = 0;
   // Frame time is everything from the start of the replay's frames, without hashing, and what the
@@ -196,18 +205,16 @@ window.replay = async (scripts, id, budgetMs, withDrawing = false) => {
     await det.yieldToEventLoop();
     frameMs = performance.now() - start - checkMs;
     if (det.CHECKPOINTS.includes(frame)) {
-      checkpoints[frame] = scriptMs;
-      det.report({ frame, frameMs, scriptMs, drawMs, drifted });
-    }
-    if (frame % det.CHECK_INTERVAL === 0) {
       const c = performance.now();
-      hashes.push(forkphorusState(stage));
+      checkpoints[frame] = scriptMs;
+      states[frame] = forkphorusState(stage);
       checkMs += performance.now() - c;
+      det.report({ frame, frameMs, scriptMs, drawMs, drifted, state: states[frame] });
     }
   }
   console.log("[REPLAY] frames end");
-  hashes.push(forkphorusState(stage));
   checkpoints[frame] = scriptMs;
-  return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });
+  states[frame] ??= forkphorusState(stage);
+  return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, states, checkpoints });
 };
 </script>

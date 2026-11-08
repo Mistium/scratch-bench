@@ -39,8 +39,8 @@ export type ProjectRun =
     /** Frames that made a different number of passes than recorded. */
     drifted: number;
     /**
-     * A hash of the project's state through the replay: a runtime that computes something else
-     * differs. "unfinished" when the replay was stopped in a frame that didn't end.
+     * The project's state at the last frame (projects/REPLAY.md, "State"): a runtime that computes
+     * something else differs. "unfinished" when the replay was cut in a frame that didn't end.
      */
     hash: string;
     /**
@@ -49,6 +49,8 @@ export type ProjectRun =
      * frames it reached, as a bound (projects/REPLAY.md).
      */
     checkpoints: Record<number, number>;
+    /** The project's state at each checkpoint (not the bound), to check it against another's. */
+    states: Record<number, string>;
   }
   | { error: string };
 
@@ -129,7 +131,7 @@ export const parity: Suite<ParityData> = {
 };
 
 const PROJECT_LINE =
-  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| (\S+) \| ([\d.:,]*)$/;
+  /^(\d+) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \| (\d+)\/(\d+) \| (\d+) \| (\S+) \| ([\da-z.:,]*)$/;
 
 /**
  * Real projects, each replaying a recording of someone using it, frame by frame and the same in
@@ -157,8 +159,12 @@ export const projects: Suite<Record<string, ProjectRun>> = {
           recorded_frames: Number(m[6]),
           drifted: Number(m[7]),
           hash: m[8],
+          // frame:ms:state, or frame:ms for a bound.
           checkpoints: Object.fromEntries(
-            m[9].split(",").filter(Boolean).map((c) => c.split(":").map(Number) as [number, number]),
+            m[9].split(",").filter(Boolean).map((c) => c.split(":")).map(([f, ms]) => [Number(f), Number(ms)]),
+          ),
+          states: Object.fromEntries(
+            m[9].split(",").filter(Boolean).map((c) => c.split(":")).filter((c) => c[2]).map(([f, , s]) => [Number(f), s]),
           ),
         };
         continue;

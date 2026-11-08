@@ -150,6 +150,11 @@ export const parseResult = (
         drifted: num(value.drifted),
         hash: typeof value.hash === "string" ? value.hash : null,
         hash_kind: typeof value.hash_kind === "string" ? value.hash_kind : null,
+        states: isObject(value.states)
+          ? Object.fromEntries(
+            Object.entries(value.states).filter(([, s]) => typeof s === "string"),
+          ) as Record<string, string>
+          : null,
         checkpoints: isObject(value.checkpoints)
           ? Object.fromEntries(
             Object.entries(value.checkpoints).filter(([, ms]) => typeof ms === "number" && Number.isFinite(ms)),

@@ -46,9 +46,11 @@ Each replay reports:
   as slow;
 - frames that made a different number of passes than recorded (**drifted**): those did different
   work, and a replay with more than 1% of them isn't scored;
-- a hash of the project's state every 30 frames and at the end. The same runtime should always give
-  the same hash, so a change between versions means it now computes something else; runtimes whose
-  replays hash the same way (everything in the browser runner) can be compared with Scratch too.
+- the project's state at each checkpoint, hashed the same way in every runtime (REPLAY.md,
+  "State"). A runtime is compared with TurboWarp only on the frames up to where their states last
+  agreed: past that it was computing something else (a feature it lacks, a setting it ignores),
+  and its time says nothing about running the project. One whose state never agreed isn't compared
+  on that project.
 
 Each project is replayed 3 times (`--project-runs`) and the medians kept; if any of the 3 fails, so
 does the project.

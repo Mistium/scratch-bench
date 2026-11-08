@@ -105,7 +105,6 @@ export const nodeVmRuntime = (
           cmd: ["node", path.join(ADAPTERS, "chromium-vm.mjs"), id, sb3],
           cwd: ROOT,
         }),
-        replayHash: "scratch-vm",
         replay: (sb3, r) => ({
           cmd: ["node", path.join(ADAPTERS, "chromium-vm.mjs"), id, sb3],
           cwd: ROOT,

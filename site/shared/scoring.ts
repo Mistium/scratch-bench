@@ -44,7 +44,23 @@ type Replayed = {
   frames?: number | null;
   drifted?: number | null;
   checkpoints?: Record<string, number> | null;
+  /** The project's state at each checkpoint (projects/REPLAY.md, "State"). */
+  states?: Record<string, string> | null;
 } | undefined;
+
+/**
+ * How far a replay's state agreed with the reference's: `through` is the last checkpoint frame
+ * both have a state for at which they still agreed, `differs` the first at which they didn't
+ * ("mixed", a runtime whose own runs disagreed, never agrees). Null when either has no states
+ * (older results), so there is nothing to check.
+ */
+export const agreement = (p: Replayed, reference: Replayed): { through: number | null; differs: number | null } | null => {
+  if (!p?.states || !reference?.states) return null;
+  const frames = Object.keys(p.states).map(Number).filter((f) => reference.states![f] !== undefined).sort((x, y) => x - y);
+  const differs = frames.find((f) => p.states![f] !== reference.states![f] || p.states![f] === "mixed") ?? null;
+  const through = frames.filter((f) => differs === null || f < differs).at(-1) ?? null;
+  return { through, differs };
+};
 
 /** A replay that ran without error and did the recorded work (drifted on at most 1% of frames). */
 const comparable = (p: Replayed): p is NonNullable<Replayed> =>
@@ -70,7 +86,8 @@ const marksOf = (p: NonNullable<Replayed>) => {
 /**
  * How fast a replay ran against the reference's, on exactly the same frames: the reference's script
  * time over its own at the furthest checkpoint both reached (a runtime that couldn't get through the
- * recording in its time is compared on the frames it did). A replay cut in a frame the reference
+ * recording in its time is compared on the frames it did), and only up to where its state still
+ * agreed with the reference's (null if it never did). A replay cut in a frame the reference
  * got past is compared through its bound at the reference's first checkpoint from that frame on:
  * the bound holds at every later one too, but the first gives the tightest comparison, and a later
  * one could score a runtime that never finished a frame above the reference. 1 for the reference
@@ -78,6 +95,16 @@ const marksOf = (p: NonNullable<Replayed>) => {
  */
 export const relativeSpeed = (p: Replayed, reference: Replayed): number | null => {
   if (!comparable(p) || !comparable(reference)) return null;
+  // Only the frames on which it computed what the reference did: past where its state stopped
+  // agreeing, it was doing other work, and its time says nothing about running the project.
+  const agreed = agreement(p, reference);
+  if (agreed?.differs !== null && agreed?.differs !== undefined) {
+    if (agreed.through === null) return null;
+    const until = agreed.through;
+    const theirs = new Map(marksOf(reference).real.filter(([f]) => f <= until));
+    const shared = marksOf(p).real.find(([f]) => f <= until && theirs.has(f));
+    return shared ? theirs.get(shared[0])! / shared[1] : null;
+  }
   const theirs = marksOf(reference).real;
   const mine = marksOf(p);
   if (mine.bound) {

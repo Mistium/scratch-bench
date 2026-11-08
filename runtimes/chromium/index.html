@@ -185,27 +185,30 @@ const waitForSkins = async (renderer) => {
   }
 };
 
-const { fnv1a, round } = BenchReplay;
-
-/** A hash of what the project computed: every sprite and clone, and every variable and list. */
-const hashState = (vm) => {
-  const groups = {};
-  for (const t of vm.runtime.targets) {
-    const name = t.isStage ? "(stage)" : t.getName();
-    (groups[name] ??= []).push([
-      t.isOriginal,
-      round(t.x), round(t.y), round(t.direction), round(t.size),
-      t.currentCostume, t.visible, t.rotationStyle, t.draggable,
-      typeof t.getLayerOrder === "function" ? t.getLayerOrder() : null,
-      Object.keys(t.effects ?? {}).sort().map((k) => round(t.effects[k])),
-      Object.keys(t.variables).sort().map((id) => {
-        const v = t.variables[id];
-        return [v.name, Array.isArray(v.value) ? BenchReplay.listValues(v.value) : round(v.value)];
-      }),
-    ]);
-  }
-  return fnv1a(JSON.stringify(Object.keys(groups).sort().map((n) => [n, groups[n]])));
-};
+/** The project's state, hashed as every runner does (BenchReplay.stateHash). */
+const hashState = (vm) =>
+  BenchReplay.stateHash(vm.runtime.targets.map((t) => {
+    const variables = [];
+    const lists = [];
+    for (const v of Object.values(t.variables)) {
+      if (v.type === "list") lists.push([v.name, v.value]);
+      else if (v.type === "" || v.type === undefined) variables.push([v.name, v.value]);
+    }
+    return {
+      stage: t.isStage,
+      original: t.isOriginal,
+      name: t.isStage ? "Stage" : t.getName(),
+      x: t.x, y: t.y, direction: t.direction, size: t.size,
+      costume: t.currentCostume,
+      visible: t.visible,
+      rotationStyle: t.rotationStyle,
+      draggable: t.draggable,
+      layer: typeof t.getLayerOrder === "function" ? t.getLayerOrder() : vm.runtime.targets.indexOf(t),
+      effects: t.effects,
+      variables,
+      lists,
+    };
+  }));
 
 /**
  * Replays /recording.json against /project.sb3 and returns the result line:
@@ -319,8 +322,9 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
   const gl = renderer.gl;
   const pixel = new Uint8Array(4);
   const finishGpu = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-  const hashes = [];
+  // At each checkpoint, the script time so far and the project's state.
   const checkpoints = {};
+  const states = {};
   // Frame time is everything from the start of the replay's frames, without hashing: the runtime's
   // work, the GPU finishing, and anything the browser does for the runtime between frames. The
   // budget counts it, so no replay takes longer than its recording. The checkpoints, which the
@@ -369,19 +373,17 @@ window.replay = async (kind, scripts, compiler, id, budgetMs, withDrawing = fals
     await det.yieldToEventLoop();
     frameMs = performance.now() - start - checkMs;
     if (det.CHECKPOINTS.includes(frame)) {
-      checkpoints[frame] = scriptMs;
-      det.report({ frame, frameMs, scriptMs, drawMs, drifted });
-    }
-    if (frame % det.CHECK_INTERVAL === 0) {
       const c = performance.now();
-      hashes.push(hashState(vm));
+      checkpoints[frame] = scriptMs;
+      states[frame] = hashState(vm);
       checkMs += performance.now() - c;
+      det.report({ frame, frameMs, scriptMs, drawMs, drifted, state: states[frame] });
     }
   }
   console.log("[REPLAY] frames end");
   det.virtualTimers(false);
-  hashes.push(hashState(vm));
   checkpoints[frame] = scriptMs;
-  return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, hashes, checkpoints });
+  states[frame] ??= hashState(vm);
+  return det.line(id, { scriptMs, drawMs, frameMs, frames: frame, recorded: recording.frames, drifted, states, checkpoints });
 };
 </script>

@@ -4,7 +4,7 @@ import {
   SCORE_VERSION,
   scoreRuntime,
 } from "../site/shared/scoring.ts";
-import { referenceFor, relativeSpeed } from "../site/shared/scoring.ts";
+import { agreement, referenceFor, relativeSpeed } from "../site/shared/scoring.ts";
 import type { VariantInfo } from "./runtimes/types.ts";
 import type { Summary } from "./stats.ts";
 import { labelOf } from "./variants.ts";
@@ -171,16 +171,17 @@ export const renderReport = (results: SuiteResult[]): string => {
       drifted?: number;
       hash?: string | null;
       checkpoints?: Record<string, number>;
+      states?: Record<string, string>;
       error?: string;
     };
     const resultsOf = (r: SuiteResult) => (r.results as Record<string, Replayed>) ?? {};
     const nameOf = (r: SuiteResult) => labelOf(r.runtime.name, r.runtime.variant);
     const ids = [...new Set(projects.flatMap((r) => Object.keys(resultsOf(r))))];
     const byRuntime = Object.fromEntries(projects.map((r) => [r.runtime.id, resultsOf(r)]));
-    const scratch = byRuntime.scratch;
     out.push(
       "Projects: speed against TurboWarp on the same frames (frames reached when it ran out of time; " +
-        "≠ ended in a different state from Scratch; * drifted from the recorded passes)\n",
+        "≠@n: its state stopped agreeing with TurboWarp's at frame n, so it's compared on the frames " +
+        "before; * drifted from the recorded passes)\n",
     );
     out.push(
       table(
@@ -191,14 +192,11 @@ export const renderReport = (results: SuiteResult[]): string => {
             const p = resultsOf(r)[id];
             if (!p) return "-";
             if (p.error) return "error";
-            const speed = relativeSpeed(p, referenceFor(id, byRuntime));
-            const base = scratch?.[id];
-            // Only hashes made by the same code, of the same frames, compare.
-            const hashed = (x?: { hash?: string | null }) => !!x?.hash && /^[0-9a-f]{8}$/.test(x.hash);
-            const differs = hashed(base) && hashed(p) && base.hash_kind === p.hash_kind &&
-              base.frames === p.frames && base.hash !== p.hash;
+            const reference = referenceFor(id, byRuntime);
+            const speed = relativeSpeed(p, reference);
+            const differs = agreement(p, reference)?.differs ?? null;
             const reached = p.frames! < p.recorded_frames! ? ` (${p.frames}/${p.recorded_frames})` : "";
-            return `${differs ? "≠" : ""}${p.drifted ? "*" : ""}${speed === null ? "-" : `${speed.toFixed(2)}×`}${reached}`;
+            return `${differs !== null ? `≠@${differs} ` : ""}${p.drifted ? "*" : ""}${speed === null ? "-" : `${speed.toFixed(2)}×`}${reached}`;
           }),
         ]),
       ),

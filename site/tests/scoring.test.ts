@@ -5,6 +5,7 @@ import {
   type Medians,
   MIN_COVERAGE,
   PROJECT_WEIGHT,
+  agreement,
   referenceFor,
   referenceRate,
   relativeSpeed,
@@ -187,6 +188,27 @@ describe("scoreRuntime with real projects", () => {
     expect(relativeSpeed(replay(300, { 1: 4, 30: 80, 50: 100, 300: 1000 }), cut)).toBe(0.5);
     // One cut in its first frame has nothing real to be compared with.
     expect(referenceFor("1", { turbowarp: { 1: replay(0, { 1: 3000 }) } })).toBeUndefined();
+  });
+
+  it("compares a replay only on the frames its state agreed with the reference's", () => {
+    const states = (o: Record<string, string>) => ({ states: o });
+    const reference = replay(300, { 1: 2, 30: 40, 300: 500 }, states({ 1: "a", 30: "b", 300: "c" }));
+    // Agreed throughout: compared at frame 300.
+    expect(relativeSpeed(replay(300, { 1: 4, 30: 80, 300: 1000 }, states({ 1: "a", 30: "b", 300: "c" })), reference)).toBe(0.5);
+    // Agreed through frame 30, then did other work (much less of it): compared on frames 1-30.
+    const other = replay(300, { 1: 4, 30: 80, 300: 90 }, states({ 1: "a", 30: "b", 300: "x" }));
+    expect(relativeSpeed(other, reference)).toBe(0.5);
+    expect(agreement(other, reference)).toEqual({ through: 30, differs: 300 });
+    // Never agreed: not compared at all.
+    expect(relativeSpeed(replay(300, { 1: 1, 300: 10 }, states({ 1: "x", 300: "y" })), reference)).toBeNull();
+    // Its own runs disagreed at frame 30: nothing to check after frame 1.
+    expect(agreement(replay(300, { 1: 4, 30: 80, 300: 1000 }, states({ 1: "a", 30: "mixed", 300: "c" })), reference))
+      .toEqual({ through: 1, differs: 30 });
+    // A cut replay that stopped agreeing isn't compared through its bound.
+    expect(relativeSpeed(replay(30, { 1: 4, 30: 80, 31: 3080 }, states({ 1: "a", 30: "x" })), reference)).toBe(0.5);
+    // Older results without states aren't checked.
+    expect(agreement(replay(300, { 300: 1000 }), reference)).toBeNull();
+    expect(relativeSpeed(replay(300, { 300: 1000 }), reference)).toBe(0.5);
   });
 
   it("uses TurboWarp's replay as the reference, and no other", () => {

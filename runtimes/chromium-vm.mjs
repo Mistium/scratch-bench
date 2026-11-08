@@ -3,7 +3,7 @@ import http from "http";
 import path from "path";
 import { createRequire } from "module";
 import { chromium } from "playwright-core";
-import { replayInPage } from "./replay-runner.mjs";
+import { replayInPage, separateIds } from "./replay-runner.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, "..");
@@ -105,7 +105,8 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, {
         "Content-Type": types[path.extname(p)] || "application/octet-stream",
       });
-      res.end(d);
+      const script = recording && p.endsWith(".js") && /^\/(web|node_modules|chunks|assets)\//.test(url);
+      res.end(script ? separateIds(d.toString("utf8")) : d);
     }
   });
 }).listen(0, "127.0.0.1", async () => {

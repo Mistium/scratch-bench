@@ -6,6 +6,27 @@ export const LATE_MS = 3_000;
 
 const ms = (x) => Math.round(x * 10) / 10;
 
+// The characters scratch-vm makes ids of (uid.js), in every fork.
+const ID_SOUP = "!#%()*+,-./:;=?@[]^_`{|}~ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/**
+ * A runtime's script, with scratch-vm's id generator drawing on a random stream of its own
+ * (window.__benchIdRandom, replay.js) instead of Math.random. It draws 20 numbers for every id, a
+ * clone's for one, which other runtimes don't, so with it on Math.random the project's own random
+ * numbers would come out in a different order from theirs. Every fork writes the generator a little
+ * differently: minified, right after its characters; unminified (ClipCC), as uid.js has it.
+ */
+export const separateIds = (js) => {
+  let out = "";
+  let at = 0;
+  for (let i = js.indexOf(ID_SOUP); i !== -1; i = js.indexOf(ID_SOUP, at)) {
+    const end = Math.min(js.length, i + ID_SOUP.length + 200);
+    out += js.slice(at, i) + js.slice(i, end).replaceAll("Math.random()", "__benchIdRandom()");
+    at = end;
+  }
+  return (out + js.slice(at)).replaceAll("charAt(Math.random() * soupLength)", "charAt(__benchIdRandom() * soupLength)");
+};
+
 /**
  * Replays in the page with `run` (which calls its `window.replay`) and prints the result line and
  * DONE.
@@ -34,7 +55,9 @@ export const replayInPage = async (page, { recording, replayId, budgetMs }, run)
       current = { frame, scriptMs, drawMs, drifted };
     } else if (kind === "checkpoint") {
       const [frame, , scriptMs] = rest.map(Number);
-      marks.push(`${frame}:${ms(scriptMs)}`);
+      marks.push(`${frame}:${ms(scriptMs)}:${rest[5]}`);
+    } else if (kind === "state" && process.env.BENCH_STATE_DUMP) {
+      fs.writeFileSync(process.env.BENCH_STATE_DUMP, JSON.parse(rest.join(" ")));
     } else if (kind === "frames" && rest[0] === "end") {
       clearTimeout(stuck);
     } else if (kind === "frames" && rest[0] === "start") {
@@ -49,6 +72,8 @@ export const replayInPage = async (page, { recording, replayId, budgetMs }, run)
       }, budgetMs + LATE_MS);
     }
   });
+  // BENCH_STATE_DUMP=<file>: write the first state's text there (BenchReplay.stateHash).
+  if (process.env.BENCH_STATE_DUMP) await page.evaluate(() => (window.__dumpState = true));
   const line = await run().catch((e) => `${replayId} | error | ${String(e.message).split("\n")[0]}`);
   clearTimeout(stuck);
   console.log(`[PROJECT] ${line}`);
