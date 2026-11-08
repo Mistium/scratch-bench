@@ -104,19 +104,11 @@ export const measureSuite = async (
       ]),
     );
   } else if (suite.id === "projects") {
-    // One project per call: its times summarized over the runs, the rest from the last run.
-    const all = (datas as Record<string, ProjectRun>[]).flatMap((d) => Object.values(d));
-    const ran = all.filter((r) => !("error" in r)) as Extract<ProjectRun, { hash: string }>[];
-    const last = ran.at(-1);
-    results = last
-      ? {
-        ...last,
-        script_ms: summarize(ran.map((r) => r.script_ms)),
-        draw_ms: summarize(ran.map((r) => r.draw_ms)),
-        wall_ms: summarize(ran.map((r) => r.wall_ms)),
-        load_ms: stats.startup_ms,
-      }
-      : all.at(-1) ?? { error: runs.at(-1)?.error ?? "no result" };
+    results = combineReplays(
+      (datas as Record<string, ProjectRun>[]).flatMap((d) => Object.values(d)),
+      runs.find((r) => r.error)?.error,
+    );
+    if (!("error" in (results as object))) (results as Record<string, unknown>).load_ms = stats.startup_ms;
   } else if (datas.length) {
     results = datas[datas.length - 1];
   }
@@ -134,4 +126,29 @@ export const statsOf = (runs: SuiteResult["runs"]): SuiteResult["stats"] => {
     );
   }
   return stats;
+};
+
+/**
+ * One project's replays, combined: times as medians; the checkpoints every run reached, each its
+ * median (so another runtime is compared on frames all of them got through); the fewest frames, the
+ * most drift, and the hash only if every run agrees ("mixed" otherwise: not deterministic). A run
+ * that failed fails the project, since its other runs may not have done the same work.
+ */
+export const combineReplays = (all: ProjectRun[], runError?: string): unknown => {
+  const ran = all.filter((r) => !("error" in r)) as Extract<ProjectRun, { hash: string }>[];
+  if (!ran.length || ran.length !== all.length) {
+    return all.find((r) => "error" in r) ?? { error: runError ?? "no result" };
+  }
+  const median = (xs: number[]) => summarize(xs)!.median;
+  const shared = Object.keys(ran[0].checkpoints).filter((f) => ran.every((r) => f in r.checkpoints));
+  return {
+    recorded_frames: ran[0].recorded_frames,
+    frames: Math.min(...ran.map((r) => r.frames)),
+    drifted: Math.max(...ran.map((r) => r.drifted)),
+    hash: ran.every((r) => r.hash === ran[0].hash) ? ran[0].hash : "mixed",
+    checkpoints: Object.fromEntries(shared.map((f) => [f, median(ran.map((r) => r.checkpoints[Number(f)]))])),
+    script_ms: summarize(ran.map((r) => r.script_ms)),
+    draw_ms: summarize(ran.map((r) => r.draw_ms)),
+    wall_ms: summarize(ran.map((r) => r.wall_ms)),
+  };
 };

@@ -132,9 +132,10 @@ export const projects: Suite<Record<string, ProjectRun>> = {
   id: "projects",
   source: "projects",
   launcher: "gui",
-  // Only runtimes whose launcher can replay (projects/REPLAY.md) run it.
+  // Only runtimes whose launcher can replay (projects/REPLAY.md) run it. Each project runs 3 times
+  // and is reported by the medians: one run varies by up to about 8%.
   defaultVariantOnly: true,
-  runs: 1,
+  runs: 3,
   isDone: (line) => line === "DONE",
   parse(lines) {
     const out: Record<string, ProjectRun> = {};
