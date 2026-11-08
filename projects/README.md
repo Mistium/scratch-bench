@@ -53,7 +53,11 @@ Each replay reports:
   on that project.
 
 Each project is replayed 3 times (`--project-runs`) and the medians kept; if any of the 3 fails, so
-does the project.
+does the project. The replays go in rounds: each round replays every project in every runtime, the
+runtimes one after another for each project (moving along a place each round), so anything else
+the machine does meanwhile falls on all of them about alike rather than on one, and least of all
+on TurboWarp alone, which every runtime is measured against. A run should still have the machine
+to itself: on a busy one a runtime's single replays vary by a third or more.
 
 A runtime's speed on a project is TurboWarp's script time over its own at the furthest checkpoint
 both reached, in the same run, so they are always compared on exactly the same frames: 0.5 is half as
